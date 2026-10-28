@@ -1,0 +1,37 @@
+{
+  "name": "platformer-kit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Command-line tools from the platformer-kit skills: measure-difficulty (simulated players for a browser platformer) and terrain-sheet (edge-band terrain renderer)",
+  "license": "MIT",
+  "homepage": "https://aigamedev.ai/series/make-a-platformer/",
+  "repository": "github:aigamedev-ai/platformer-kit",
+  "bin": {
+    "platformer-kit": "tools/bin/platformer-kit.mjs",
+    "measure-difficulty": "tools/bin/measure-difficulty.mjs",
+    "terrain-sheet": "tools/bin/terrain-sheet.mjs"
+  },
+  "files": [
+    "tools/bin",
+    "tools/lib"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "sync": "node tools/sync.mjs",
+    "check:sync": "node tools/sync.mjs --check",
+    "check": "node tools/sync.mjs --check && npm --prefix template run check"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}

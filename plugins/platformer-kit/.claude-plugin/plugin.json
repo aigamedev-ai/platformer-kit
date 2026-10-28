@@ -1,0 +1,13 @@
+{
+  "name": "platformer-kit",
+  "displayName": "Platformer kit",
+  "description": "Skills for making a 2D platformer with Claude Code: jump feel (coyote time, jump buffering, variable jump), level design with simulated players, game juice, sound effects in code and pixel art. From the make-a-platformer series on aigamedev.ai.",
+  "author": {
+    "name": "aigamedev.ai",
+    "url": "https://aigamedev.ai"
+  },
+  "homepage": "https://aigamedev.ai/series/make-a-platformer/",
+  "repository": "https://github.com/aigamedev-ai/platformer-kit",
+  "license": "MIT",
+  "keywords": ["platformer", "game-dev", "phaser", "level-design", "game-feel", "pixel-art", "sound"]
+}

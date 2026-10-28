@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tiny Platformer – Level 1</title>
+  <style>
+    body { margin: 0; background: #1b1d29; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; color: #ccc; }
+    p { margin: 8px; font-size: 14px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+</head>
+<body>
+  <div id="game"></div>
+  <p>Arrow keys / A-D to move &middot; Up / W / Space to jump (press again in mid-air to double jump)</p>
+  <script>
+    // ---- Tuning ----
+    const GAME_WIDTH = 800;
+    const GAME_HEIGHT = 480;
+    const GRAVITY = 1400;          // px/s^2 pulling the player down
+    const RUN_SPEED = 260;         // max horizontal speed, px/s
+    const RUN_ACCEL = 2000;        // how fast the player reaches run speed
+    const RUN_DRAG = 2400;         // how fast the player stops when no key held
+    const JUMP_VELOCITY = 560;     // initial upward speed of a jump
+    const JUMP_CUT = 0.45;         // velocity multiplier when jump is released early (variable jump height)
+    const COYOTE_TIME = 0.09;      // s after leaving a ledge where a jump still counts
+    const JUMP_BUFFER = 0.11;      // s a jump press is remembered before landing; if the player will land
+                                   // within this time, the press waits for the ground instead of using the air jump
+    const MAX_FALL_SPEED = 900;    // terminal velocity
+    const AIR_JUMPS = 1;           // extra jumps allowed in mid-air (1 = double jump)
+    const AIR_JUMP_VELOCITY = 500; // upward speed of each air jump (a bit weaker than the ground jump)
+    const PLAYER_SIZE = 28;
+
+    // ---- Level 1 ----
+    // Each room is a 25 x 15 grid of 32 px tiles (exactly one screen).
+    //   #  solid   ^  spikes (touch = restart room)   P  player start
+    //   D  door to the next room   G  goal flag (end of level)
+    const TILE = 32;
+    const ROOMS = [
+      { // 1. Run right along the floor and step down off a low ledge to the door.
+        name: 'Run',
+        grid: [
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.P.......................',
+          '############..........D..',
+          '#########################',
+          '#########################',
+        ] },
+      { // 2. Jump onto a low block, then across a small safe gap to a higher one.
+        name: 'Jump',
+        grid: [
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '......................D..',
+          '............#############',
+          '.P.....###..#############',
+          '#########################',
+          '#########################',
+        ] },
+      { // 3. Jump two spike pits, the second one wider, with a rest between them.
+        name: 'Spike pits',
+        grid: [
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.P....................D..',
+          '#######...#####....######',
+          '#######^^^#####^^^^######',
+        ] },
+      { // 4. Double jump up a wall that is far too tall for one jump (falling is safe).
+        name: 'Double jump',
+        grid: [
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '......................D..',
+          '.............############',
+          '.............############',
+          '.............############',
+          '.P...........############',
+          '#########################',
+          '#########################',
+        ] },
+      { // 5. Run, jump and double jump across a wide spike pit onto a higher ledge.
+        name: 'Long jump',
+        grid: [
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '......................D..',
+          '...............##########',
+          '.P.............##########',
+          '#######........##########',
+          '#######^^^^^^^^##########',
+        ] },
+      { // 6. Hop over spikes onto a pillar, then double jump high up to the goal ledge.
+        name: 'Goal',
+        grid: [
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '.........................',
+          '......................G..',
+          '................#########',
+          '................#########',
+          '................#########',
+          '................#########',
+          '................#########',
+          '.........###....#########',
+          '.P.......###....#########',
+          '######...###....#########',
+          '######^^^###^^^^#########',
+        ] },
+    ];
+    const SPIKE_HITBOX = { insetX: 5, insetTop: 14 };  // spikes hurt only near their visible points
+    const DEATH_PAUSE = 250;  // ms before the room restarts
+
+    // Cover the room's solid tiles with as few rectangles as possible (no seams for the player to catch on)
+    function solidRects(grid) {
+      const used = grid.map(r => [...r].map(() => false));
+      const solid = (r, c) => grid[r][c] === '#' && !used[r][c];
+      const rects = [];
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[r].length; c++) {
+          if (!solid(r, c)) continue;
+          let w = 1;
+          while (c + w < grid[r].length && solid(r, c + w)) w++;
+          let h = 1;
+          while (r + h < grid.length && [...Array(w).keys()].every(i => solid(r + h, c + i))) h++;
+          for (let y = r; y < r + h; y++) for (let x = c; x < c + w; x++) used[y][x] = true;
+          rects.push({ c, r, w, h });
+        }
+      }
+      return rects;
+    }
+
+    class Main extends Phaser.Scene {
+      create() {
+        this.platforms = this.physics.add.staticGroup();
+        this.spikes = this.physics.add.staticGroup();
+        this.exits = this.physics.add.staticGroup();
+        this.roomArt = this.add.group();
+
+        this.player = this.add.rectangle(0, 0, PLAYER_SIZE, PLAYER_SIZE, 0xf2b134).setDepth(1);
+        this.physics.add.existing(this.player);
+        const body = this.player.body;
+        body.setCollideWorldBounds(true);
+        body.setMaxVelocity(RUN_SPEED, MAX_FALL_SPEED);
+        body.setDragX(RUN_DRAG);
+        this.physics.add.collider(this.player, this.platforms);
+        this.physics.add.overlap(this.player, this.spikes, () => this.die());
+        this.physics.add.overlap(this.player, this.exits, (player, exit) => this.reachExit(exit));
+
+        this.roomText = this.add.text(12, 10, '', { fontSize: '18px', color: '#9aa4c0', fontFamily: 'sans-serif' }).setDepth(2);
+        this.bigText = this.add.text(GAME_WIDTH / 2, 120, '', { fontSize: '40px', color: '#ffe14d', fontFamily: 'sans-serif' })
+          .setOrigin(0.5).setDepth(2);
+        this.deaths = 0;
+
+        this.keys = this.input.keyboard.addKeys('LEFT,RIGHT,UP,A,D,W,SPACE');
+        this.lastGrounded = -Infinity;
+        this.jumpPressed = false;  // jump went down since the last update
+        this.jumpBuffer = 0;       // s left before a remembered jump press expires
+        this.airJumpsLeft = AIR_JUMPS;
+        for (const k of [this.keys.UP, this.keys.W, this.keys.SPACE]) {
+          k.on('down', () => { this.jumpPressed = true; });
+        }
+
+        this.loadRoom(0);
+
+        // Hook for scripted tests (goto/load only jump between rooms)
+        window.__test = {
+          player: () => ({ x: this.player.x, y: this.player.y, vy: this.player.body.velocity.y,
+                           onGround: this.player.body.blocked.down, airJumpsLeft: this.airJumpsLeft }),
+          state: () => ({ room: this.roomIndex, deaths: this.deaths, won: this.won }),
+          goto: (i) => this.loadRoom(i),
+          load: (grid) => this.loadRoom(-1, grid),
+        };
+      }
+
+      // Build room i from its grid (or a custom grid for tests) and put the player at its start
+      loadRoom(i, grid = ROOMS[i].grid) {
+        this.roomIndex = i;
+        this.won = false;
+        this.dying = false;
+        this.platforms.clear(true, true);
+        this.spikes.clear(true, true);
+        this.exits.clear(true, true);
+        this.roomArt.clear(true, true);
+        this.bigText.setText('');
+
+        for (const { c, r, w, h } of solidRects(grid)) {
+          this.platforms.add(this.add.rectangle((c + w / 2) * TILE, (r + h / 2) * TILE, w * TILE, h * TILE, 0x4f6d7a));
+        }
+        grid.forEach((row, r) => [...row].forEach((ch, c) => {
+          const x = c * TILE, y = r * TILE;
+          if (ch === '^') {
+            this.roomArt.add(this.add.triangle(x, y, 0, TILE, TILE / 4, 4, TILE / 2, TILE, 0xe0475b).setOrigin(0));
+            this.roomArt.add(this.add.triangle(x + TILE / 2, y, 0, TILE, TILE / 4, 4, TILE / 2, TILE, 0xe0475b).setOrigin(0));
+            const { insetX, insetTop } = SPIKE_HITBOX;
+            const hit = this.add.zone(x + TILE / 2, y + (TILE + insetTop) / 2, TILE - 2 * insetX, TILE - insetTop);
+            this.spikes.add(hit);
+          } else if (ch === 'D' || ch === 'G') {
+            // Door / flag stands on the tile below and is two tiles tall
+            const zone = this.add.zone(x + TILE / 2, y, TILE, TILE * 2);
+            zone.isGoal = ch === 'G';
+            this.exits.add(zone);
+            if (zone.isGoal) {
+              this.roomArt.add(this.add.rectangle(x + 6, y, 4, TILE * 2, 0xdddddd));
+              this.roomArt.add(this.add.triangle(x + 8, y - TILE + 2, 0, 0, 22, 9, 0, 18, 0xffe14d).setOrigin(0));
+            } else {
+              this.roomArt.add(this.add.rectangle(x + TILE / 2, y, TILE - 4, TILE * 2, 0x8a5a3b).setStrokeStyle(3, 0xc58b5c));
+              this.roomArt.add(this.add.circle(x + TILE - 9, y + 4, 3, 0xffe14d));
+            }
+          } else if (ch === 'P') {
+            this.spawn = { x: x + TILE / 2, y: y + TILE - PLAYER_SIZE / 2 };
+          }
+        }));
+
+        this.player.setPosition(this.spawn.x, this.spawn.y).setFillStyle(0xf2b134);
+        this.player.body.reset(this.spawn.x, this.spawn.y);
+        this.player.body.setEnable(true);
+        this.lastGrounded = -Infinity;
+        this.jumpPressed = false;
+        this.jumpBuffer = 0;
+        this.rising = false;
+        this.airJumpsLeft = AIR_JUMPS;
+        this.roomText.setText(i >= 0 ? `Room ${i + 1} / ${ROOMS.length}` : 'Test room');
+      }
+
+      die() {
+        if (this.dying || this.won) return;
+        this.dying = true;
+        this.deaths++;
+        this.player.setFillStyle(0xe0475b);
+        this.player.body.setEnable(false);
+        this.cameras.main.shake(120, 0.008);
+        const room = this.roomIndex;
+        this.time.delayedCall(DEATH_PAUSE, () => { if (this.roomIndex === room) this.loadRoom(room); });
+      }
+
+      reachExit(exit) {
+        if (this.dying || this.won) return;
+        if (!exit.isGoal) {
+          // Swap rooms after this physics step, not in the middle of it
+          this.dying = true;
+          const next = this.roomIndex + 1;
+          this.time.delayedCall(0, () => this.loadRoom(next));
+          return;
+        }
+        this.won = true;
+        this.player.body.setEnable(false);
+        this.bigText.setText(this.deaths ? `Level complete!  (${this.deaths} restarts)` : 'Level complete!');
+      }
+
+      update(time, delta) {
+        const body = this.player.body;
+        const k = this.keys;
+        const left = k.LEFT.isDown || k.A.isDown;
+        const right = k.RIGHT.isDown || k.D.isDown;
+        const jumpHeld = k.UP.isDown || k.W.isDown || k.SPACE.isDown;
+
+        body.setAccelerationX(left === right ? 0 : (left ? -RUN_ACCEL : RUN_ACCEL));
+
+        // Ignore "grounded" while moving up, so the frame right after takeoff doesn't count
+        const onGround = (body.blocked.down || body.touching.down) && body.velocity.y >= 0;
+        if (onGround) {
+          this.lastGrounded = time;
+          this.airJumpsLeft = AIR_JUMPS;
+        }
+
+        // Jump buffer: a press stays queued for JUMP_BUFFER seconds
+        this.jumpBuffer = this.jumpPressed ? JUMP_BUFFER : Math.max(0, this.jumpBuffer - delta / 1000);
+        const jumpQueued = this.jumpPressed || this.jumpBuffer > 0;
+        this.jumpPressed = false;
+        if (jumpQueued && (time - this.lastGrounded) / 1000 <= COYOTE_TIME) {
+          // Ground jump, with coyote time + input buffering
+          this.jump(JUMP_VELOCITY);
+          this.lastGrounded = -Infinity;
+        } else if (jumpQueued && this.airJumpsLeft > 0 && this.timeToLand() > this.jumpBuffer) {
+          // Air jump: replaces any fall speed so it always gives a real boost.
+          // Skipped while the player will land before the buffer runs out, so an early press becomes a ground jump.
+          this.jump(AIR_JUMP_VELOCITY);
+          this.airJumpsLeft--;
+        }
+
+        // Variable jump height: releasing early cuts the rise
+        if (this.rising && !jumpHeld && body.velocity.y < 0) {
+          body.setVelocityY(body.velocity.y * JUMP_CUT);
+          this.rising = false;
+        }
+        if (body.velocity.y >= 0) this.rising = false;
+      }
+
+      // Seconds until the player falls onto a platform below, assuming no input (Infinity if none)
+      timeToLand() {
+        const body = this.player.body;
+        const vy = body.velocity.y;
+        let best = Infinity;
+        for (const p of this.platforms.getChildren()) {
+          const pb = p.body;
+          if (pb.right <= body.left || pb.left >= body.right || pb.top < body.bottom - 1) continue;
+          const d = pb.top - body.bottom;
+          const t = (-vy + Math.sqrt(vy * vy + 2 * GRAVITY * d)) / GRAVITY;
+          best = Math.min(best, t);
+        }
+        return best;
+      }
+
+      jump(velocity) {
+        this.player.body.setVelocityY(-velocity);
+        this.jumpBuffer = 0;
+        this.rising = true;
+      }
+    }
+
+    const game = window.__game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: 'game',
+      width: GAME_WIDTH,
+      height: GAME_HEIGHT,
+      backgroundColor: '#2a2d3e',
+      physics: { default: 'arcade', arcade: { gravity: { y: GRAVITY } } },
+      scene: Main,
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+{
+  "note": "Ramps go dark -> light. Darker shades shift cooler (toward blue/violet) and more saturated; lighter shades shift warmer and less saturated. Colour names are ramp + index: moss0 ... moss4. 'roles' says what each ramp is for; keep the danger ramp for hazards only.",
+  "N": {
+    "title": "Night ruins above the clouds",
+    "roles": {"background": ["bg", "cloud"], "terrain": ["moss", "stone", "fill", "grass"], "light": "lamp", "danger": "rose",
+              "pickup": "cyan", "hero": ["skin", "cloth", "scarf", "hair"], "hero_spent": "spent", "outline": "ink"},
+    "ramps": {
+      "ink":     ["#070918"],
+      "bg":      ["#05071a", "#0a0f2a", "#11183a", "#1a244e", "#283664"],
+      "cloud":   ["#1e2850", "#323e6c", "#4e5a8e", "#7884b4", "#b4bcdc"],
+      "stone":   ["#121829", "#1d2539", "#2c364f", "#435070", "#6c7898"],
+      "fill":    ["#0f1426", "#161d33", "#202a44"],
+      "moss":    ["#0e2a2a", "#17423a", "#25643f", "#4a8c42", "#8cbc4c"],
+      "grass":   ["#9a8a36", "#e0b850", "#ffe58a"],
+      "lamp":    ["#a8481e", "#ff9a3a", "#ffd070", "#fff4c0"],
+      "rose":    ["#3a0822", "#8a1438", "#e03a5a", "#ff7a8a", "#ffd0d8"],
+      "cyan":    ["#0f3448", "#177087", "#2fb0b8", "#74ece0", "#e0fff2"],
+      "tan":     ["#3a1f24", "#7a4630", "#b87a40", "#e2ac5c", "#fbe39a"],
+      "violet":  ["#2a1a6a", "#5a3cc0", "#9a7cff", "#d8ccff"],
+      "magenta": ["#3a0c50", "#8a1680", "#d0309c", "#fa6ad0", "#ffc4ec"],
+      "green":   ["#1d5a46", "#3fa060", "#9ae070"],
+      "skin":    ["#c87a62", "#ffd0a4"],
+      "cloth":   ["#a49ab4", "#f2ead8"],
+      "scarf":   ["#a82a3e", "#f2603a", "#ffb05a"],
+      "spent":   ["#3a4670", "#6a7ca6", "#a8bad8"],
+      "hair":    ["#2a1a2e", "#4e3046"],
+      "white":   ["#ffffff"]
+    }
+  },
+  "B": {
+    "title": "Crystal cavern",
+    "roles": {"background": ["bg"], "terrain": ["cyan", "stone", "fill"], "light": "lamp", "danger": "magenta",
+              "pickup": "cyan", "hero": ["skin", "cloth", "scarf", "hair"], "hero_spent": "spent", "outline": "ink"},
+    "ramps": {
+      "ink":     ["#0a0b16"],
+      "bg":      ["#05080f", "#09101d", "#0e182a", "#15233a", "#1e3049"],
+      "stone":   ["#151927", "#232939", "#333a4c", "#4a5266", "#747a8c"],
+      "fill":    ["#0d1322", "#141c30", "#1c2840"],
+      "cyan":    ["#0f3448", "#177087", "#2fb0b8", "#74ece0", "#e0fff2"],
+      "magenta": ["#3a0c50", "#8a1680", "#d0309c", "#fa6ad0", "#ffc4ec"],
+      "lamp":    ["#a8481e", "#ff9a3a", "#ffd070", "#fff4c0"],
+      "tan":     ["#3a1f24", "#7a4630", "#b87a40", "#e2ac5c", "#fbe39a"],
+      "violet":  ["#2a1a6a", "#5a3cc0", "#9a7cff", "#d8ccff"],
+      "green":   ["#1d5a46", "#3fa060", "#9ae070"],
+      "skin":    ["#c87a62", "#ffd0a4"],
+      "cloth":   ["#a49ab4", "#f2ead8"],
+      "scarf":   ["#a82a3e", "#f2603a", "#ffb05a"],
+      "spent":   ["#3a4670", "#6a7ca6", "#a8bad8"],
+      "hair":    ["#2a1a2e", "#4e3046"],
+      "white":   ["#ffffff"]
+    }
+  }
+}

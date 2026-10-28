@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tiny Platformer</title>
+  <style>
+    body { margin: 0; background: #1b1d29; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; color: #ccc; }
+    p { margin: 8px; font-size: 14px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+</head>
+<body>
+  <div id="game"></div>
+  <p>Arrow keys / A-D to move &middot; Up / W / Space to jump (press again in mid-air to double jump)</p>
+  <script>
+    // ---- Tuning ----
+    const GAME_WIDTH = 800;
+    const GAME_HEIGHT = 480;
+    const GRAVITY = 1400;          // px/s^2 pulling the player down
+    const RUN_SPEED = 260;         // max horizontal speed, px/s
+    const RUN_ACCEL = 2000;        // how fast the player reaches run speed
+    const RUN_DRAG = 2400;         // how fast the player stops when no key held
+    const JUMP_VELOCITY = 560;     // initial upward speed of a jump
+    const JUMP_CUT = 0.45;         // velocity multiplier when jump is released early (variable jump height)
+    const COYOTE_TIME = 0.09;      // s after leaving a ledge where a jump still counts
+    const JUMP_BUFFER = 0.11;      // s a jump press is remembered before landing; if the player will land
+                                   // within this time, the press waits for the ground instead of using the air jump
+    const MAX_FALL_SPEED = 900;    // terminal velocity
+    const AIR_JUMPS = 1;           // extra jumps allowed in mid-air (1 = double jump)
+    const AIR_JUMP_VELOCITY = 500; // upward speed of each air jump (a bit weaker than the ground jump)
+    const PLAYER_SIZE = 28;
+    const COIN_RADIUS = 8;
+    const COIN_BOB = 4;            // px coins float up and down
+    const COIN_BOB_TIME = 700;     // ms for one bob up (or down)
+
+    const PLATFORMS = [
+      // x, y (center), width, height
+      [400, 465, 800, 30],   // ground
+      [160, 370, 160, 16],
+      [400, 290, 140, 16],
+      [640, 220, 160, 16],
+      [420, 140, 110, 16],
+      [130, 200, 120, 16],
+    ];
+
+    const COINS = [
+      // x, y (center) — sit just above a platform's top edge
+      [680, 425],            // ground
+      [160, 336],
+      [400, 256],
+      [640, 186],
+      [420, 106],            // top platform
+      [130, 166],
+    ];
+
+    class Main extends Phaser.Scene {
+      create() {
+        this.platforms = this.physics.add.staticGroup();
+        for (const [x, y, w, h] of PLATFORMS) {
+          const p = this.add.rectangle(x, y, w, h, 0x4f6d7a);
+          this.platforms.add(p);
+        }
+
+        this.player = this.add.rectangle(40, 400, PLAYER_SIZE, PLAYER_SIZE, 0xf2b134);
+        this.physics.add.existing(this.player);
+        const body = this.player.body;
+        body.setCollideWorldBounds(true);
+        body.setMaxVelocity(RUN_SPEED, MAX_FALL_SPEED);
+        body.setDragX(RUN_DRAG);
+        this.physics.add.collider(this.player, this.platforms);
+
+        this.coins = this.physics.add.staticGroup();
+        for (const [x, y] of COINS) {
+          const c = this.add.circle(x, y, COIN_RADIUS, 0xffe14d).setStrokeStyle(2, 0xc99a1a);
+          this.coins.add(c);
+          this.tweens.add({ targets: c, y: y - COIN_BOB, duration: COIN_BOB_TIME, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+        }
+        this.coinCount = 0;
+        this.coinText = this.add.text(12, 10, '', { fontSize: '20px', color: '#ffe14d', fontFamily: 'sans-serif' });
+        this.updateCoinText();
+        this.physics.add.overlap(this.player, this.coins, (player, coin) => this.collectCoin(coin));
+
+        this.keys = this.input.keyboard.addKeys('LEFT,RIGHT,UP,A,D,W,SPACE');
+        this.lastGrounded = -Infinity;
+        this.jumpPressed = false;  // jump went down since the last update
+        this.jumpBuffer = 0;       // s left before a remembered jump press expires
+        this.airJumpsLeft = AIR_JUMPS;
+        for (const k of [this.keys.UP, this.keys.W, this.keys.SPACE]) {
+          k.on('down', () => { this.jumpPressed = true; });
+        }
+
+        // Read-only hook for scripted tests
+        window.__test = {
+          player: () => ({ x: this.player.x, y: this.player.y, vy: this.player.body.velocity.y,
+                           onGround: this.player.body.blocked.down, airJumpsLeft: this.airJumpsLeft }),
+        };
+      }
+
+      update(time, delta) {
+        const body = this.player.body;
+        const k = this.keys;
+        const left = k.LEFT.isDown || k.A.isDown;
+        const right = k.RIGHT.isDown || k.D.isDown;
+        const jumpHeld = k.UP.isDown || k.W.isDown || k.SPACE.isDown;
+
+        body.setAccelerationX(left === right ? 0 : (left ? -RUN_ACCEL : RUN_ACCEL));
+
+        // Ignore "grounded" while moving up, so the frame right after takeoff doesn't count
+        const onGround = (body.blocked.down || body.touching.down) && body.velocity.y >= 0;
+        if (onGround) {
+          this.lastGrounded = time;
+          this.airJumpsLeft = AIR_JUMPS;
+        }
+
+        // Jump buffer: a press stays queued for JUMP_BUFFER seconds
+        this.jumpBuffer = this.jumpPressed ? JUMP_BUFFER : Math.max(0, this.jumpBuffer - delta / 1000);
+        const jumpQueued = this.jumpPressed || this.jumpBuffer > 0;
+        this.jumpPressed = false;
+        if (jumpQueued && (time - this.lastGrounded) / 1000 <= COYOTE_TIME) {
+          // Ground jump, with coyote time + input buffering
+          this.jump(JUMP_VELOCITY);
+          this.lastGrounded = -Infinity;
+        } else if (jumpQueued && this.airJumpsLeft > 0 && this.timeToLand() > this.jumpBuffer) {
+          // Air jump: replaces any fall speed so it always gives a real boost.
+          // Skipped while the player will land before the buffer runs out, so an early press becomes a ground jump.
+          this.jump(AIR_JUMP_VELOCITY);
+          this.airJumpsLeft--;
+        }
+
+        // Variable jump height: releasing early cuts the rise
+        if (this.rising && !jumpHeld && body.velocity.y < 0) {
+          body.setVelocityY(body.velocity.y * JUMP_CUT);
+          this.rising = false;
+        }
+        if (body.velocity.y >= 0) this.rising = false;
+      }
+
+      // Seconds until the player falls onto a platform below, assuming no input (Infinity if none)
+      timeToLand() {
+        const body = this.player.body;
+        const vy = body.velocity.y;
+        let best = Infinity;
+        for (const p of this.platforms.getChildren()) {
+          const pb = p.body;
+          if (pb.right <= body.left || pb.left >= body.right || pb.top < body.bottom - 1) continue;
+          const d = pb.top - body.bottom;
+          const t = (-vy + Math.sqrt(vy * vy + 2 * GRAVITY * d)) / GRAVITY;
+          best = Math.min(best, t);
+        }
+        return best;
+      }
+
+      collectCoin(coin) {
+        coin.body.enable = false;  // stop it counting twice while it animates away
+        this.tweens.killTweensOf(coin);
+        this.tweens.add({ targets: coin, scale: 1.8, alpha: 0, duration: 200, onComplete: () => coin.destroy() });
+        this.coinCount++;
+        this.updateCoinText();
+      }
+
+      updateCoinText() {
+        const done = this.coinCount === COINS.length ? '  — all collected!' : '';
+        this.coinText.setText(`Coins: ${this.coinCount} / ${COINS.length}${done}`);
+      }
+
+      jump(velocity) {
+        this.player.body.setVelocityY(-velocity);
+        this.jumpBuffer = 0;
+        this.rising = true;
+      }
+    }
+
+    const game = window.__game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: 'game',
+      width: GAME_WIDTH,
+      height: GAME_HEIGHT,
+      backgroundColor: '#2a2d3e',
+      physics: { default: 'arcade', arcade: { gravity: { y: GRAVITY } } },
+      scene: Main,
+    });
+  </script>
+</body>
+</html>

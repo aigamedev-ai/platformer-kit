@@ -1,0 +1,15 @@
+{
+  "name": "aigamedev",
+  "description": "Skills from aigamedev.ai for making games with Claude Code",
+  "owner": {
+    "name": "aigamedev.ai",
+    "url": "https://aigamedev.ai"
+  },
+  "plugins": [
+    {
+      "name": "platformer-kit",
+      "source": "./plugins/platformer-kit",
+      "description": "Five skills from the make-a-platformer series: platformer feel, level design with a difficulty measurer, game juice, sound effects in code and pixel art"
+    }
+  ]
+}

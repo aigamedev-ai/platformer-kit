@@ -1,0 +1,17 @@
+{
+  "name": "platformer-kit-template",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wick: Night Ruins, the finished chapter from the make-a-platformer series on aigamedev.ai",
+  "license": "MIT",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "check": "node tools/measure-difficulty.mjs index.html levels/routes.mjs --check",
+    "playthrough": "node tools/measure-difficulty.mjs index.html levels/routes.mjs --playthrough",
+    "measure": "node tools/measure-difficulty.mjs index.html levels/routes.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}

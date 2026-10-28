@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tiny Platformer</title>
+  <style>
+    body { margin: 0; background: #1b1d29; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; color: #ccc; }
+    p { margin: 8px; font-size: 14px; }
+    #mute { font: 13px sans-serif; color: #ccc; background: #2a2d3e; border: 1px solid #4f6d7a; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+</head>
+<body>
+  <div id="game"></div>
+  <p>Arrow keys / A-D to move &middot; Up / W / Space to jump (press again in mid-air to double jump) &middot; Enter on the end screen to play again &middot; J to switch effects on/off &middot; M to mute sound</p>
+  <button id="mute" type="button"></button>
+  <script src="levels/section-1.js"></script>
+  <script src="levels/section-2.js"></script>
+  <script src="levels/section-3.js"></script>
+  <script src="levels/section-4.js"></script>
+  <script>
+    // ---- Tuning ----
+    const GAME_WIDTH = 800;
+    const GAME_HEIGHT = 480;
+    const GRAVITY = 1400;          // px/s^2 pulling the player down
+    const RUN_SPEED = 260;         // max horizontal speed, px/s
+    const RUN_ACCEL = 2000;        // how fast the player reaches run speed
+    const RUN_DRAG = 2400;         // how fast the player stops when no key held
+    const JUMP_VELOCITY = 560;     // initial upward speed of a jump
+    const JUMP_CUT = 0.45;         // velocity multiplier when jump is released early (variable jump height)
+    const COYOTE_TIME = 0.09;      // s after leaving a ledge where a jump still counts
+    const JUMP_BUFFER = 0.11;      // s a jump press is remembered before landing; if the player will land
+                                   // within this time, the press waits for the ground instead of using the air jump
+    const MAX_FALL_SPEED = 900;    // terminal velocity
+    const AIR_JUMPS = 1;           // extra jumps allowed in mid-air (1 = double jump)
+    const AIR_JUMP_VELOCITY = 500; // upward speed of each air jump (a bit weaker than the ground jump)
+    const SPRING_VELOCITY = 900;   // upward speed from a spring pad (peaks ~280 px, 2.7x a jump, leaving head room
+                                   // for a double jump at the top); not cut by releasing jump
+    const PLAYER_SIZE = 28;
+
+    const CRUMBLE_DELAY = 0.5;     // s a crumbling block shakes after the player stands on it, before it falls
+    const CRUMBLE_RETURN = 2.5;    // s a fallen crumbling block stays gone (it waits longer if the player is in its space)
+    const ORB_RETURN = 2.5;        // s before a used refill orb reappears
+
+    // ---- Level ----
+    // Each room is a grid of 32 px tiles, 15 rows tall and 25 columns wide (one screen) or wider (the camera follows
+    // the player sideways).
+    //   #  solid   ^  spikes (touch = restart room)   P  player start
+    //   S  spring pad (stands on the tile below; touching it from above bounces the player high
+    //      and gives back the double jump)
+    //   C  crumbling block: solid, but a moment after the player stands on it, it shakes and falls; it comes back
+    //      a while later. Touching C's in the same row fall together as one block.
+    //   O  refill orb: touching it in mid-air with the double jump spent gives the double jump back; it reappears
+    //      a few seconds later (if the double jump isn't spent, the orb is left alone)
+    //   D  door to the next room   G  goal flag (end of a section; the next section starts in its first room)
+    //   B  bonus door: a side door into the optional room (beat 'optional') listed right after this room. Put it
+    //      behind the start, up on a one-tile step (so walking back doesn't go in by accident; it takes a hop), so the
+    //      way on is never through it. It's drawn glowing with a crown of spikes: a side trip, and a hard one.
+    //      In the optional room, D finishes it and goes on to the main room after the one it branched from (or ends
+    //      the chapter if that was the last room); a B behind its start leaves without finishing, back to the start
+    //      of the room it branched from (drawn without the spikes). Doors and flags on the main path skip optional
+    //      rooms.
+    //   K  checkpoint: a post standing on the tile below. Touching it lights it, and from then on a death restarts the
+    //      room there instead of at P (the room itself is rebuilt fresh). Touching K's in the same row are one
+    //      checkpoint, so a whole rest platform can count; the post stands in the middle of the run.
+    const TILE = 32;
+    const COLS = 25, ROWS = 15;
+
+    // The chapter is a list of sections, each in its own file (levels/section-N.js, loaded by a <script> tag above),
+    // so sections can be built separately. A file adds { number, name, rooms } to window.SECTIONS; a room is
+    // { name, area, beat, grid }. Room names are unique in the whole chapter and area numbers run on from the
+    // previous section. Every section's last main room ends at a goal flag. A room with beat 'optional' is a side
+    // room: it comes right after the room whose bonus door B leads into it.
+    function loadSections() {
+      const sections = [...(window.SECTIONS || [])].sort((a, b) => a.number - b.number);
+      const problems = [];
+      const names = new Set();
+      let lastArea = 0;
+      if (!sections.length) problems.push('no sections loaded');
+      sections.forEach((s, i) => {
+        const where = `section ${s.number}`;
+        if (s.number !== i + 1) problems.push(`${where}: sections must be numbered 1, 2, 3, ... (expected ${i + 1})`);
+        if (!s.rooms || !s.rooms.length) { problems.push(`${where}: no rooms`); return; }
+        s.rooms.forEach((room, j) => {
+          const at = `${where}, room ${j + 1} (${room.name})`;
+          if (!room.name) problems.push(`${at}: needs a name`);
+          else if (names.has(room.name)) problems.push(`${at}: another room already has this name`);
+          names.add(room.name);
+          if (!(room.area >= lastArea)) problems.push(`${at}: area ${room.area} comes after area ${lastArea}`);
+          lastArea = room.area;
+          const g = room.grid || [];
+          if (g.length !== ROWS || !(g[0]?.length >= COLS) || g.some(row => row.length !== g[0].length)) {
+            problems.push(`${at}: grid must be ${ROWS} rows of the same length, at least ${COLS} tiles`);
+          }
+          const all = g.join('');
+          const bad = [...new Set(all.replace(/[.#^PSCODGBK]/g, ''))];
+          if (bad.length) problems.push(`${at}: unknown tiles ${bad.join(' ')}`);
+          if (all.split('P').length !== 2) problems.push(`${at}: needs exactly one P`);
+          const optional = room.beat === 'optional';
+          const last = !optional && !s.rooms.slice(j + 1).some(r => r.beat !== 'optional');  // last main room
+          const prev = s.rooms[j - 1], next = s.rooms[j + 1];
+          if (last && !all.includes('G')) problems.push(`${at}: the last room of a section needs a goal flag G`);
+          if (!last && !all.includes('D') && !(!optional && all.includes('G'))) problems.push(`${at}: needs a door D`);
+          if (optional && all.includes('G')) problems.push(`${at}: an optional room can't have a goal flag`);
+          if (!optional && all.includes('B') && next?.beat !== 'optional') problems.push(`${at}: a bonus door B needs an optional room right after it`);
+          if (optional && !(prev && prev.beat !== 'optional' && prev.grid?.join('').includes('B'))) {
+            problems.push(`${at}: an optional room must come right after a room with a bonus door B`);
+          }
+        });
+      });
+      if (problems.length) {
+        const msg = 'Level data problems:\n  ' + problems.join('\n  ');
+        document.body.insertAdjacentHTML('afterbegin', `<pre style="color:#e0475b">${msg}</pre>`);
+        throw new Error(msg);
+      }
+      return sections;
+    }
+    const SECTIONS = loadSections();
+    const ROOMS = SECTIONS.flatMap(s => s.rooms.map(r => ({ ...r, section: s.number })));
+
+    // 83.4 s -> "1:23.40"; whole: true -> "1:23"
+    function formatTime(seconds, whole = false) {
+      const cs = Math.floor(seconds * 100);
+      const s = Math.floor(cs / 100) % 60, m = Math.floor(cs / 6000) % 60, h = Math.floor(cs / 360000);
+      const ss = String(s).padStart(2, '0') + (whole ? '' : '.' + String(cs % 100).padStart(2, '0'));
+      return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+    }
+    const SPIKE_HITBOX = { insetX: 5, insetTop: 14 };  // spikes hurt only near their visible points
+    const DEATH_PAUSE = 250;  // ms before the room restarts
+
+    // Cover the room's solid tiles with as few rectangles as possible (no seams for the player to catch on)
+    function solidRects(grid) {
+      const used = grid.map(r => [...r].map(() => false));
+      const solid = (r, c) => grid[r][c] === '#' && !used[r][c];
+      const rects = [];
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[r].length; c++) {
+          if (!solid(r, c)) continue;
+          let w = 1;
+          while (c + w < grid[r].length && solid(r, c + w)) w++;
+          let h = 1;
+          while (r + h < grid.length && [...Array(w).keys()].every(i => solid(r + h, c + i))) h++;
+          for (let y = r; y < r + h; y++) for (let x = c; x < c + w; x++) used[y][x] = true;
+          rects.push({ c, r, w, h });
+        }
+      }
+      return rects;
+    }
+
+    // Horizontal runs of touching `tile` tiles (C: each run is one crumbling block; K: one checkpoint)
+    function tileRuns(grid, tile) {
+      const runs = [];
+      grid.forEach((row, r) => {
+        for (let c = 0; c < row.length; c++) {
+          if (row[c] !== tile) continue;
+          let w = 1;
+          while (row[c + w] === tile) w++;
+          runs.push({ c, r, w });
+          c += w - 1;
+        }
+      });
+      return runs;
+    }
+
+    const PLAYER_COLOR = 0xf2b134;
+    const PLAYER_SPENT_COLOR = 0xa8742a;  // double jump used: dimmer, so it's clear when a refill orb is needed
+    const CRUMBLE_COLOR = 0xb0895a;
+    const ORB_COLOR = 0x6ff2e8;
+    const CHECKPOINT_COLOR = 0x6b7390;      // checkpoint flag before it's touched
+    const CHECKPOINT_LIT_COLOR = 0x7cf29a;  // ... and once it's the restart point
+
+    // ---- Juice ----
+    // Visual feedback only: nothing here touches a body, a velocity, a game timer or input. The player's body is an
+    // invisible rectangle; what you see is a separate one (Fx.art) that follows it and squashes and stretches.
+    // Each effect has its own switch; `on: false` (or the J key, or ?juice=0 in the address) gives back the original
+    // game. With "reduce motion" set in the system, there is no shake and no flash.
+    const REDUCED_MOTION = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const JUICE = {
+      on: !/[?&]juice=0\b/.test(location.search),
+      squash: true,              // stretch on jumps and bounces, squash on landing, breathe when idle, stretch in a fast fall
+      particles: true,           // dust, sparks, crumbs, debris, death burst, confetti
+      shake: !REDUCED_MOTION,    // small camera shakes and nudges
+      flash: !REDUCED_MOTION,    // white flashes on the player, gold fade at a goal flag
+      hitPause: true,            // a short visual freeze on death (the room still restarts at the same moment)
+      transitions: true,         // fade into a new room, pop in on respawn, end screen entrance
+
+      // Times in ms, sizes in px. Scales are [width, height].
+      jumpStretch: [0.8, 1.2], jumpTime: 150,
+      airJumpStretch: [0.9, 1.1], airJumpTime: 150, airJumpSpin: 260,
+      bounceStretch: [0.7, 1.35], bounceTime: 240, bounceNudge: 3, nudgeTime: 180,
+      landSquash: [1.3, 0.7], landTime: 140,
+      landMinSpeed: 200, landFullSpeed: 850,  // fall speeds (px/s) for the smallest and the full squash
+      heavyLandSpeed: 800, heavyLandShake: [2, 100],  // [px, ms]
+      fallStretch: 0.08,         // extra height at top fall speed
+      breathe: 0.03, breathePeriod: 1500,
+      dust: 8, dustLife: [250, 400], runDustEvery: 130,
+      deathPause: 70, deathPieces: 22, deathLife: [400, 600], deathShake: [5, 250],
+      crumbleShake: [2, 100], crumbsEvery: 90, debrisPerTile: 4,
+      orbSparks: 8, flashTime: 60,
+      fadeTime: 180,
+    };
+
+    const clamp01 = t => Math.min(1, Math.max(0, t));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const easeOut = t => 1 - (1 - t) ** 3;
+    const easeBack = t => 1 + 2.70158 * (t - 1) ** 3 + 1.70158 * (t - 1) ** 2;  // small springy overshoot
+
+    class Fx {
+      constructor(scene) {
+        this.scene = scene;
+        this.t = 0;              // ms of juice time; it stops during a hit pause
+        this.particles = [];     // { obj, vx, vy, gravity, age, life, alpha, grow }
+        this.art = scene.add.rectangle(0, 0, PLAYER_SIZE, PLAYER_SIZE, PLAYER_COLOR).setDepth(1);
+        this.squash = null;      // { sx, sy, start, dur, ease }: recovers to 1 x 1
+        this.spin = null;        // { start, dur, dir }
+        this.flashUntil = 0;
+        this.shakes = [];        // { px, start, dur }
+        this.nudge = null;       // { dy, start, dur }
+        this.pauseLeft = 0;      // ms left in the death hit pause
+        this.hidden = false;     // after the death burst, until the room restarts
+        this.wasGrounded = false;
+        this.prevVy = 0;
+        this.nextRunDust = 0;
+        this.pendingExit = null; // 'door' or 'flag' until the next room is built
+        this.endIntro = null;    // juice time the end screen opened
+        scene.events.on('postupdate', (time, delta) => this.update(delta));  // after the physics step
+        scene.input.keyboard.addKey('J').on('down', () => { JUICE.on = !JUICE.on; this.apply(); });
+        this.apply();
+      }
+
+      // Show the juiced player or the original one
+      apply() {
+        const s = this.scene;
+        s.player.setVisible(!JUICE.on);
+        this.art.setVisible(JUICE.on && !this.hidden);
+        if (!JUICE.on) {
+          this.clearParticles();
+          this.shakes = [];
+          this.nudge = null;
+          this.endIntro = null;
+          s.endScreen.alpha = 1;
+          s.endTitle.setScale(1);
+          s.cameras.main.setPosition(0, 0);
+        }
+      }
+
+      // ---- events (called by the game) ----
+
+      jump() {
+        if (!JUICE.on) return;
+        this.setSquash(JUICE.jumpStretch, JUICE.jumpTime, easeOut);
+        this.dust(10);
+      }
+
+      airJump() {
+        if (!JUICE.on) return;
+        this.setSquash(JUICE.airJumpStretch, JUICE.airJumpTime, easeOut);
+        if (JUICE.squash) this.spin = { start: this.t, dur: JUICE.airJumpSpin, dir: Math.sign(this.scene.player.body.velocity.x) || 1 };
+        const p = this.scene.player;
+        this.ring(p.x, p.y + PLAYER_SIZE / 2, 0xdfe6f5, 6, 3, 220);
+      }
+
+      bounce(spring) {
+        if (!JUICE.on) return;
+        this.setSquash(JUICE.bounceStretch, JUICE.bounceTime, easeOut);
+        this.burst(spring.x, spring.y - 4, { count: 10, color: 0x8ff59a, angle: [-150, -30], speed: [120, 260],
+                                             gravity: 500, life: [250, 400], size: [3, 5] });
+        if (JUICE.shake) this.nudge = { dy: JUICE.bounceNudge, start: this.t, dur: JUICE.nudgeTime };
+      }
+
+      land(vy) {
+        if (vy < JUICE.landMinSpeed) return;
+        const k = clamp01((vy - JUICE.landMinSpeed) / (JUICE.landFullSpeed - JUICE.landMinSpeed));
+        const amount = lerp(0.3, 1, k);  // a short hop barely squashes
+        const [w, h] = JUICE.landSquash;
+        this.setSquash([lerp(1, w, amount), lerp(1, h, amount)], JUICE.landTime, easeBack);
+        this.dust(Math.round(JUICE.dust * amount));
+        if (vy >= JUICE.heavyLandSpeed) this.shake(...JUICE.heavyLandShake);
+      }
+
+      die() {
+        const s = this.scene;
+        if (!JUICE.on) { s.cameras.main.shake(120, 0.008); return; }  // the original death shake
+        this.squash = this.spin = null;
+        this.pauseLeft = JUICE.hitPause ? JUICE.deathPause : 0;
+        if (JUICE.flash) this.flashUntil = this.t + this.pauseLeft + 1;
+        if (!this.pauseLeft) this.deathBurst();
+      }
+
+      deathBurst() {
+        const p = this.scene.player;
+        this.hidden = true;
+        this.art.setVisible(false);
+        this.burst(p.x, p.y, { count: JUICE.deathPieces, color: [PLAYER_COLOR, 0xe0475b, 0xffffff], angle: [-175, -5], speed: [120, 340],
+                               gravity: 800, life: JUICE.deathLife, size: [4, 8], depth: 1.5 });
+        this.ring(p.x, p.y, 0xe0475b, 10, 4, 260);
+        this.shake(...JUICE.deathShake);
+      }
+
+      exit(exit) {
+        if (JUICE.on) this.pendingExit = exit.isGoal ? 'flag' : 'door';
+      }
+
+      win(exit) {
+        if (!JUICE.on) return;
+        const s = this.scene;
+        if (exit.isGoal) {
+          this.burst(exit.x + 18, exit.y - TILE + 10, { count: 36, angle: [-160, -20], speed: [150, 380], gravity: 500,
+            life: [700, 1100], size: [4, 7], color: [0xffe14d, 0x6ff2e8, 0x7cf29a, 0xf2b134, 0xb48cf0], depth: 2.5 });
+        }
+        if (JUICE.flash) s.cameras.main.flash(180, 255, 225, 77);
+        if (JUICE.transitions) {
+          this.endIntro = this.t;
+          this.drawEndScreen();
+        }
+      }
+
+      // The end screen fades in after a beat and its title springs up
+      drawEndScreen() {
+        const k = this.t - this.endIntro - 150;
+        this.scene.endScreen.alpha = clamp01(k / 250);
+        this.scene.endTitle.setScale(lerp(0.4, 1, easeBack(clamp01(k / 400))));
+        if (k >= 400) this.endIntro = null;
+      }
+
+      // After loadRoom: a death restart pops the player back in; a door or flag fades the new room in
+      roomLoaded(afterDeath) {
+        const s = this.scene, p = s.player, cam = s.cameras.main;
+        this.endIntro = null;
+        s.endScreen.alpha = 1;
+        s.endTitle.setScale(1);
+        this.squash = this.spin = null;
+        this.flashUntil = 0;
+        this.pauseLeft = 0;
+        this.hidden = false;
+        this.art.setVisible(JUICE.on);
+        this.wasGrounded = false;
+        this.prevVy = 0;
+        const exit = this.pendingExit;
+        this.pendingExit = null;
+        if (!afterDeath) {
+          this.clearParticles();
+          this.shakes = [];
+          this.nudge = null;
+        }
+        if (!JUICE.on || !JUICE.transitions) return;
+        if (afterDeath) {
+          this.setSquash([0.2, 0.2], 240, easeBack, true);
+          this.ring(p.x, p.y, 0xffffff, 8, 3, 260);
+        } else if (exit === 'flag' && JUICE.flash) {
+          cam.fadeIn(JUICE.fadeTime * 2, 120, 104, 40);
+        } else if (exit) {
+          cam.fadeIn(JUICE.fadeTime, 27, 29, 41);
+        }
+      }
+
+      // ---- per frame ----
+
+      update(delta) {
+        if (!JUICE.on) return;
+        const s = this.scene, p = s.player, body = p.body;
+        if (this.pauseLeft > 0) {  // hit pause: hold every effect still
+          this.pauseLeft -= delta;
+          if (this.pauseLeft <= 0) this.deathBurst();
+          this.drawPlayer();
+          return;
+        }
+        this.t += delta;
+
+        // Landing and running, read from the body after the physics step
+        const grounded = body.enable && body.blocked.down;
+        if (grounded && !this.wasGrounded) this.land(this.prevVy);
+        this.wasGrounded = grounded;
+        this.prevVy = body.velocity.y;
+        const vx = body.velocity.x;
+        const skidding = body.acceleration.x * vx < 0;
+        if (grounded && !s.dying && Math.abs(vx) > 140 && this.t >= this.nextRunDust) {
+          this.nextRunDust = this.t + JUICE.runDustEvery * (skidding ? 0.5 : 1);
+          this.burst(p.x - Math.sign(vx) * 10, p.y + PLAYER_SIZE / 2 - 2, { count: skidding ? 3 : 1, color: 0xc9d1e6,
+            angle: vx > 0 ? [-170, -120] : [-60, -10], speed: [20, 60], gravity: -40, life: [200, 320], size: [3, 5], alpha: 0.6 });
+        }
+
+        this.watchRoom();
+        if (this.endIntro != null) this.drawEndScreen();
+        this.updateParticles(delta);
+        this.updateCamera();
+        this.drawPlayer();
+      }
+
+      // Crumbling blocks, orbs and checkpoints change state inside the game; answer each change
+      watchRoom() {
+        const s = this.scene;
+        for (const b of s.crumbleBlocks) {
+          const z = b.zone, left = z.x - z.width / 2, bottom = z.y + TILE / 2;
+          if (b.fxState && b.fxState !== b.state) {
+            if (b.state === 'shaking') {
+              this.burst(z.x, bottom, { count: 5, spreadX: z.width / 2, color: CRUMBLE_COLOR, angle: [80, 100],
+                                        speed: [20, 60], gravity: 600, life: [250, 400], size: [2, 4], depth: -1 });
+            } else if (b.state === 'gone') {
+              for (let k = 0; k < z.width / TILE; k++) {
+                this.burst(left + (k + 0.5) * TILE, z.y, { count: JUICE.debrisPerTile, spreadX: TILE / 3, spreadY: TILE / 3,
+                  color: [CRUMBLE_COLOR, 0x6e5232], angle: [-160, -20], speed: [80, 180], gravity: 1100,
+                  life: [350, 450], size: [4, 8], depth: -1, spin: true });
+              }
+              this.shake(...JUICE.crumbleShake);
+            } else if (b.state === 'solid') {
+              this.burst(z.x, z.y, { count: 6, spreadX: z.width / 2, spreadY: TILE / 2, color: 0xe0c49a, speed: [10, 30],
+                                     gravity: -30, life: [200, 300], size: [2, 4], alpha: 0.7 });
+            }
+          }
+          b.fxState = b.state;
+          if (b.state === 'shaking' && this.t >= (b.fxNextCrumb || 0)) {  // crumbs trickle while it shakes
+            b.fxNextCrumb = this.t + JUICE.crumbsEvery;
+            this.burst(z.x, bottom, { count: 1, spreadX: z.width / 2, color: CRUMBLE_COLOR, angle: [85, 95],
+                                      speed: [30, 60], gravity: 600, life: [250, 350], size: [2, 3], depth: -1 });
+          }
+        }
+        for (const o of s.orbList) {
+          if (o.fxReady !== undefined && o.fxReady !== o.ready) {
+            if (!o.ready) {
+              this.burst(o.gem.x, o.gem.y, { count: JUICE.orbSparks, color: [ORB_COLOR, 0xffffff], speed: [80, 180],
+                                             gravity: 0, life: [200, 320], size: [2, 4] });
+              if (JUICE.flash) this.flashUntil = this.t + JUICE.flashTime;
+            } else {
+              this.ring(o.gem.x, o.gem.y, ORB_COLOR, 14, 2, 220, 0.4);
+            }
+          }
+          o.fxReady = o.ready;
+        }
+        for (const zone of s.checkpoints.getChildren()) {
+          const cp = zone.checkpoint;
+          if (cp.fxLit === false && cp.lit) {
+            const f = cp.flag;
+            this.burst(f.x + 10, f.y + 9, { count: 10, color: [CHECKPOINT_LIT_COLOR, 0xffffff], speed: [60, 160],
+                                            gravity: 200, life: [300, 450], size: [2, 4] });
+            this.ring(f.x + 10, f.y + 9, CHECKPOINT_LIT_COLOR, 8, 3, 300);
+          }
+          cp.fxLit = cp.lit;
+        }
+      }
+
+      drawPlayer() {
+        const p = this.scene.player, body = p.body;
+        let sx = 1, sy = 1, angle = 0;
+        if (this.squash) {
+          const q = this.squash, k = clamp01((this.t - q.start) / q.dur), e = q.ease(k);
+          sx = lerp(q.sx, 1, e);
+          sy = lerp(q.sy, 1, e);
+          if (k >= 1) this.squash = null;
+        } else if (JUICE.squash && body.enable) {
+          if (body.blocked.down && Math.abs(body.velocity.x) < 5) {  // idle: breathe
+            const b = JUICE.breathe * Math.sin(this.t / JUICE.breathePeriod * Math.PI * 2);
+            sy = 1 + b;
+            sx = 1 - b;
+          } else if (!body.blocked.down && body.velocity.y > 300) {  // fast fall: stretch a little
+            const f = JUICE.fallStretch * clamp01((body.velocity.y - 300) / (MAX_FALL_SPEED - 300));
+            sy = 1 + f;
+            sx = 1 - f;
+          }
+        }
+        if (this.spin) {
+          const k = clamp01((this.t - this.spin.start) / this.spin.dur);
+          angle = this.spin.dir * 360 * easeOut(k);
+          if (k >= 1) this.spin = null;
+        }
+        // Anchored at the feet, so a squash doesn't sink into the floor
+        this.art.setPosition(p.x, p.y + PLAYER_SIZE / 2 * (1 - sy)).setScale(sx, sy).setAngle(angle);
+        this.art.setFillStyle(this.t < this.flashUntil ? 0xffffff : p.fillColor);
+      }
+
+      updateCamera() {
+        let ox = 0, oy = 0;
+        this.shakes = this.shakes.filter(sh => {
+          const k = (this.t - sh.start) / sh.dur;
+          if (k >= 1) return false;
+          const amp = sh.px * (1 - k) ** 2;  // decays to zero
+          ox += rand(-amp, amp);
+          oy += rand(-amp, amp);
+          return true;
+        });
+        if (this.nudge) {
+          const k = clamp01((this.t - this.nudge.start) / this.nudge.dur);
+          oy += this.nudge.dy * (1 - easeOut(k));
+          if (k >= 1) this.nudge = null;
+        }
+        // Moves the camera's view on the canvas (the scroll, and so every body, stays put)
+        this.scene.cameras.main.setPosition(Math.round(ox), Math.round(oy));
+      }
+
+      // ---- helpers ----
+
+      setSquash([sx, sy], dur, ease, always = false) {
+        if (JUICE.squash || always) this.squash = { sx, sy, start: this.t, dur, ease };
+      }
+
+      shake(px, dur) {
+        if (JUICE.shake) this.shakes.push({ px, start: this.t, dur });
+      }
+
+      dust(count) {
+        const p = this.scene.player, y = p.y + PLAYER_SIZE / 2 - 2;
+        for (const side of [-1, 1]) {
+          this.burst(p.x + side * 8, y, { count: Math.ceil(count / 2), color: 0xc9d1e6, alpha: 0.7, spreadX: 4,
+            angle: side < 0 ? [-185, -150] : [-30, 5], speed: [40, 120], gravity: -60, life: JUICE.dustLife, size: [3, 5] });
+        }
+      }
+
+      // count particles from (x, y): angle in degrees (0 = right, -90 = up), color one or a list to pick from
+      burst(x, y, { count, color, angle = [-180, 180], speed, gravity = 0, life, size, alpha = 1, spreadX = 0, spreadY = 0,
+                    depth = 0.9, spin = false }) {
+        if (!JUICE.particles) return;
+        for (let i = 0; i < count; i++) {
+          const a = Phaser.Math.DegToRad(rand(...angle)), v = rand(...speed), d = rand(...size);
+          const c = Array.isArray(color) ? Phaser.Utils.Array.GetRandom(color) : color;
+          const obj = this.scene.add.rectangle(x + rand(-spreadX, spreadX), y + rand(-spreadY, spreadY), d, d, c, alpha)
+            .setDepth(depth);
+          this.particles.push({ obj, vx: Math.cos(a) * v, vy: Math.sin(a) * v, gravity, age: 0, life: rand(...life),
+                                alpha, spin: spin ? rand(-720, 720) : 0 });
+        }
+      }
+
+      // A ring that grows and fades
+      ring(x, y, color, radius, width, life, alpha = 1) {
+        if (!JUICE.particles) return;
+        const obj = this.scene.add.circle(x, y, radius).setStrokeStyle(width, color, alpha).setDepth(0.9);
+        this.particles.push({ obj, vx: 0, vy: 0, gravity: 0, age: 0, life, alpha: 1, grow: 2.5 });
+      }
+
+      updateParticles(delta) {
+        const dt = delta / 1000;
+        this.particles = this.particles.filter(q => {
+          q.age += delta;
+          const k = q.age / q.life;
+          if (k >= 1) { q.obj.destroy(); return false; }
+          q.vy += q.gravity * dt;
+          q.obj.x += q.vx * dt;
+          q.obj.y += q.vy * dt;
+          if (q.spin) q.obj.angle += q.spin * dt;
+          if (q.grow) q.obj.setScale(lerp(1, q.grow, easeOut(k)));
+          q.obj.alpha = q.alpha * (1 - k * k);
+          return true;
+        });
+      }
+
+      clearParticles() {
+        for (const q of this.particles) q.obj.destroy();
+        this.particles = [];
+      }
+    }
+
+    // ---- Sound ----
+    // Sound effects made in code with the Web Audio API (no audio files). Output only, like the juice: nothing here
+    // touches a body, a velocity, a game timer or input. Sounds play whether the visual effects are on or off.
+    // M (or the button under the game) mutes them; the choice is remembered.
+    const SOUND = {
+      master: 1,            // master volume (a limiter after it catches any overlap peaks)
+      maxVoices: 3,         // copies of one sound that may play at once
+      landMinSpeed: 200,    // fall speed (px/s) below which landing is silent; louder up to landFullSpeed
+      landFullSpeed: 850,
+      crackleEvery: 0.09,   // s between crackles while a crumbling block shakes
+    };
+
+    // A tone: waveform, pitch slide from -> to over dur, attack and exponential decay, optional vibrato
+    function sfxTone(ac, out, t, { type = 'square', from, to = from, dur, attack = 0.005, vol, vibrato = 0, depth = 0 }) {
+      const osc = ac.createOscillator(), g = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(from, t);
+      osc.frequency.exponentialRampToValueAtTime(to, t + dur);
+      if (vibrato) {
+        const lfo = ac.createOscillator(), lg = ac.createGain();
+        lfo.frequency.value = vibrato;
+        lg.gain.value = depth;
+        lfo.connect(lg).connect(osc.frequency);
+        lfo.start(t);
+        lfo.stop(t + dur + 0.01);
+      }
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g).connect(out);
+      osc.start(t);
+      osc.stop(t + dur + 0.01);
+      return osc;
+    }
+
+    // A burst of white noise through a filter (lowpass by default)
+    function sfxNoise(ac, out, t, { dur, attack = 0.002, vol, freq = 800, filter = 'lowpass' }) {
+      const len = Math.ceil(ac.sampleRate * dur);
+      const buf = ac.createBuffer(1, len, ac.sampleRate), data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+      src.buffer = buf;
+      f.type = filter;
+      f.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(f).connect(g).connect(out);
+      src.start(t);
+      return src;
+    }
+
+    // One recipe per sound: (audio context, output node, start time, pitch factor p, strength k 0..1) -> the last
+    // node to finish (its end frees the voice). Pitches in Hz, times in s.
+    const SFX = {
+      jump: (ac, o, t, p) => sfxTone(ac, o, t, { from: 300 * p, to: 600 * p, dur: 0.12, vol: 0.18 }),
+      airJump: (ac, o, t, p) => sfxTone(ac, o, t, { from: 450 * p, to: 900 * p, dur: 0.1, vol: 0.16 }),
+      land: (ac, o, t, p, k) => sfxNoise(ac, o, t, { dur: lerp(0.05, 0.12, k), vol: lerp(0.25, 0.5, k), freq: 800 * p }),
+      spring: (ac, o, t) => sfxTone(ac, o, t, { type: 'triangle', from: 200, to: 900, dur: 0.25, vol: 0.35,
+                                                vibrato: 30, depth: 40 }),
+      crackle: (ac, o, t, p) => sfxNoise(ac, o, t, { dur: 0.025, vol: 0.08, freq: 2500 * p, filter: 'highpass' }),
+      crumble: (ac, o, t) => {
+        sfxTone(ac, o, t, { type: 'triangle', from: 120, to: 50, dur: 0.18, vol: 0.2 });
+        return sfxNoise(ac, o, t, { dur: 0.22, vol: 0.5, freq: 400 });
+      },
+      blockBack: (ac, o, t) => sfxTone(ac, o, t, { type: 'sine', from: 260, to: 390, dur: 0.08, vol: 0.08 }),
+      orb: (ac, o, t) => {
+        sfxTone(ac, o, t, { from: 880, dur: 0.06, vol: 0.14 });
+        return sfxTone(ac, o, t + 0.06, { from: 1320, dur: 0.09, vol: 0.14 });
+      },
+      orbBack: (ac, o, t) => sfxTone(ac, o, t, { type: 'sine', from: 1320, to: 1760, dur: 0.12, vol: 0.06 }),
+      checkpoint: (ac, o, t) => {
+        let last;
+        [660, 880, 1100].forEach((f, i) => { last = sfxTone(ac, o, t + i * 0.06, { from: f, dur: 0.07, vol: 0.13 }); });
+        return last;
+      },
+      death: (ac, o, t) => {
+        sfxNoise(ac, o, t, { dur: 0.2, vol: 0.3, freq: 1200 });
+        return sfxTone(ac, o, t, { from: 400, to: 80, dur: 0.35, vol: 0.28 });
+      },
+      respawn: (ac, o, t) => sfxTone(ac, o, t, { type: 'sine', from: 300, to: 600, dur: 0.15, attack: 0.03, vol: 0.18 }),
+      door: (ac, o, t) => sfxTone(ac, o, t, { type: 'sine', from: 500, to: 700, dur: 0.1, vol: 0.15 }),
+      bonusDoor: (ac, o, t) => {
+        sfxTone(ac, o, t, { type: 'sine', from: 500, to: 700, dur: 0.1, vol: 0.13 });
+        return sfxTone(ac, o, t + 0.08, { type: 'triangle', from: 1000, to: 1500, dur: 0.18, vol: 0.12, vibrato: 12, depth: 30 });
+      },
+      flag: (ac, o, t) => {  // end of a section
+        let last;
+        [523, 659, 784].forEach((f, i) => { last = sfxTone(ac, o, t + i * 0.08, { from: f, dur: i === 2 ? 0.3 : 0.09, vol: 0.15 }); });
+        return last;
+      },
+      finish: (ac, o, t) => {  // end of the chapter
+        [523, 659, 784, 1047].forEach((f, i) => sfxTone(ac, o, t + i * 0.09, { from: f, dur: 0.1, vol: 0.15 }));
+        sfxTone(ac, o, t + 0.36, { type: 'triangle', from: 1047, dur: 0.45, attack: 0.01, vol: 0.2, vibrato: 6, depth: 8 });
+        return sfxTone(ac, o, t + 0.36, { from: 523, dur: 0.45, attack: 0.01, vol: 0.08 });
+      },
+    };
+    // Frequent sounds get a random pitch shift of about +-5% so they don't repeat exactly
+    const SFX_VARY = { jump: 0.05, airJump: 0.05, land: 0.05, crackle: 0.15 };
+
+    // Master volume, then a limiter so overlapping sounds can't clip
+    function sfxOutput(ac, volume) {
+      const out = ac.createGain(), limiter = ac.createDynamicsCompressor();
+      out.gain.value = volume;
+      limiter.threshold.value = -2;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.1;
+      out.connect(limiter).connect(ac.destination);
+      return out;
+    }
+
+    class Sound {
+      constructor() {
+        this.ac = null;
+        this.out = null;
+        this.voices = {};  // name -> copies playing
+        try { this.muted = localStorage.getItem('sfxMuted') === '1'; } catch { this.muted = false; }
+        // Browsers only allow audio after a click or key press
+        const unlock = () => this.unlock();
+        window.addEventListener('keydown', unlock, true);
+        window.addEventListener('pointerdown', unlock, true);
+        window.addEventListener('keydown', e => { if (e.code === 'KeyM' && !e.repeat) this.toggle(); });
+        this.button = document.getElementById('mute');
+        this.button.addEventListener('mousedown', e => e.preventDefault());  // never takes focus from the game
+        this.button.addEventListener('click', () => this.toggle());
+        this.showButton();
+      }
+
+      unlock() {
+        if (!this.ac) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          this.ac = new AC();
+          this.out = sfxOutput(this.ac, this.muted ? 0 : SOUND.master);
+        }
+        if (this.ac.state === 'suspended') this.ac.resume();
+      }
+
+      toggle() {
+        this.muted = !this.muted;
+        try { localStorage.setItem('sfxMuted', this.muted ? '1' : '0'); } catch {}
+        if (this.out) this.out.gain.setTargetAtTime(this.muted ? 0 : SOUND.master, this.ac.currentTime, 0.01);
+        this.showButton();
+      }
+
+      showButton() {
+        this.button.textContent = this.muted ? '🔇 Sound off (M)' : '🔊 Sound on (M)';
+      }
+
+      // k: strength 0..1 for sounds that scale (landing)
+      play(name, k = 1) {
+        const ac = this.ac;
+        if (this.muted || !ac || ac.state !== 'running') return;
+        if ((this.voices[name] || 0) >= SOUND.maxVoices) return;
+        const v = SFX_VARY[name] || 0;
+        const last = SFX[name](ac, this.out, ac.currentTime + 0.005, 1 + rand(-v, v), k);
+        this.voices[name] = (this.voices[name] || 0) + 1;
+        last.onended = () => { this.voices[name]--; };
+      }
+    }
+
+    // Plays the scene's sounds: the game calls the event methods; landings, crumbling blocks, orbs and checkpoints
+    // are read from the scene after each physics step
+    class Sfx {
+      constructor(scene, sound) {
+        this.scene = scene;
+        this.sound = sound;
+        this.wasGrounded = false;
+        this.prevVy = 0;
+        scene.events.on('postupdate', (time, delta) => this.update(delta));
+      }
+
+      jump() { this.sound.play('jump'); }
+      airJump() { this.sound.play('airJump'); }
+      bounce() { this.sound.play('spring'); }
+      die() { this.sound.play('death'); }
+      exit(exit) { this.sound.play(exit.isGoal ? 'flag' : exit.isBonus ? 'bonusDoor' : 'door'); }
+      win() { this.sound.play('finish'); }
+
+      roomLoaded(afterDeath) {
+        this.wasGrounded = false;
+        this.prevVy = 0;
+        if (afterDeath) this.sound.play('respawn');
+      }
+
+      update(delta) {
+        const s = this.scene, body = s.player.body;
+        const grounded = body.enable && body.blocked.down;
+        if (grounded && !this.wasGrounded && this.prevVy >= SOUND.landMinSpeed) {
+          this.sound.play('land', clamp01((this.prevVy - SOUND.landMinSpeed) / (SOUND.landFullSpeed - SOUND.landMinSpeed)));
+        }
+        this.wasGrounded = grounded;
+        this.prevVy = body.velocity.y;
+
+        for (const b of s.crumbleBlocks) {
+          if (b.sfxState && b.sfxState !== b.state) {
+            if (b.state === 'gone') this.sound.play('crumble');
+            else if (b.state === 'solid') this.sound.play('blockBack');
+          }
+          b.sfxState = b.state;
+          if (b.state !== 'shaking') b.sfxCrackle = 0;
+          if (b.state === 'shaking') {  // crackles while it shakes
+            b.sfxCrackle = (b.sfxCrackle || 0) - delta / 1000;
+            if (b.sfxCrackle <= 0) {
+              b.sfxCrackle = SOUND.crackleEvery;
+              this.sound.play('crackle');
+            }
+          }
+        }
+        for (const o of s.orbList) {
+          if (o.sfxReady !== undefined && o.sfxReady !== o.ready) this.sound.play(o.ready ? 'orbBack' : 'orb');
+          o.sfxReady = o.ready;
+        }
+        for (const zone of s.checkpoints.getChildren()) {
+          const cp = zone.checkpoint;
+          if (cp.sfxLit !== undefined && !cp.sfxLit && cp.lit) this.sound.play('checkpoint');
+          cp.sfxLit = cp.lit;
+        }
+      }
+    }
+    const SOUND_OUT = new Sound();
+
+    class Main extends Phaser.Scene {
+      create() {
+        this.platforms = this.physics.add.staticGroup();
+        this.spikes = this.physics.add.staticGroup();
+        this.exits = this.physics.add.staticGroup();
+        this.springs = this.physics.add.staticGroup();
+        this.crumbles = this.physics.add.staticGroup();
+        this.orbs = this.physics.add.staticGroup();
+        this.checkpoints = this.physics.add.staticGroup();
+        this.roomArt = this.add.group();
+
+        this.player = this.add.rectangle(0, 0, PLAYER_SIZE, PLAYER_SIZE, PLAYER_COLOR).setDepth(1);
+        this.physics.add.existing(this.player);
+        const body = this.player.body;
+        body.setCollideWorldBounds(true);
+        body.setMaxVelocity(RUN_SPEED, MAX_FALL_SPEED);
+        body.setDragX(RUN_DRAG);
+        this.physics.add.collider(this.player, this.platforms);
+        this.physics.add.collider(this.player, this.crumbles, (player, zone) => this.standOnCrumble(zone.block));
+        this.physics.add.overlap(this.player, this.spikes, () => this.die());
+        this.physics.add.overlap(this.player, this.exits, (player, exit) => this.reachExit(exit));
+        this.physics.add.overlap(this.player, this.springs, (player, spring) => this.bounce(spring));
+        this.physics.add.overlap(this.player, this.orbs, (player, zone) => this.touchOrb(zone.orb));
+        this.physics.add.overlap(this.player, this.checkpoints, (player, zone) => this.touchCheckpoint(zone.checkpoint));
+
+        this.roomText = this.add.text(12, 10, '', { fontSize: '18px', color: '#9aa4c0', fontFamily: 'sans-serif' }).setDepth(2);
+        this.statsText = this.add.text(GAME_WIDTH - 12, 10, '', { fontSize: '18px', color: '#9aa4c0', fontFamily: 'sans-serif' })
+          .setOrigin(1, 0).setDepth(2);
+        this.endScreen = this.add.container(0, 0).setDepth(3).setVisible(false);
+        this.endScreen.add(this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x11131c, 0.85).setOrigin(0));
+        this.endTitle = this.add.text(GAME_WIDTH / 2, 110, 'Chapter complete!', { fontSize: '40px', color: '#ffe14d', fontFamily: 'sans-serif' })
+          .setOrigin(0.5);
+        this.endBody = this.add.text(GAME_WIDTH / 2, 170, '', { fontSize: '22px', color: '#dddddd', fontFamily: 'sans-serif',
+                                                                 align: 'center', lineSpacing: 8 }).setOrigin(0.5, 0);
+        this.endScreen.add([this.endTitle, this.endBody]);
+        for (const o of [this.roomText, this.statsText, this.endScreen]) o.setScrollFactor(0, 0, true);
+
+        this.keys = this.input.keyboard.addKeys('LEFT,RIGHT,UP,A,D,W,SPACE,ENTER');
+        this.lastGrounded = -Infinity;
+        this.jumpPressed = false;  // jump went down since the last update
+        this.jumpBuffer = 0;       // s left before a remembered jump press expires
+        this.airJumpsLeft = AIR_JUMPS;
+        for (const k of [this.keys.UP, this.keys.W, this.keys.SPACE]) {
+          k.on('down', () => { this.jumpPressed = true; });
+        }
+        this.keys.ENTER.on('down', () => { if (this.won) this.startChapter(); });
+        this.fx = new Fx(this);
+        this.sfx = new Sfx(this, SOUND_OUT);
+
+        this.startChapter();
+
+        // Hook for scripted tests (goto/load only jump between rooms)
+        window.__test = {
+          player: () => ({ x: this.player.x, y: this.player.y, vy: this.player.body.velocity.y,
+                           onGround: this.onGround(), airJumpsLeft: this.airJumpsLeft }),
+          state: () => ({ room: this.roomIndex, deaths: this.deaths, won: this.won }),
+          stats: () => ({ time: this.playTime, deaths: this.deaths, sections: this.sectionStats.map(s => ({ ...s })),
+                          bonus: this.bonusCleared.size, scrollX: this.cameras.main.scrollX, room: this.roomText.text,
+                          hud: this.statsText.text, endScreen: this.endScreen.visible ? this.endBody.text : null }),
+          crumbles: () => this.crumbleBlocks.map(b => ({ state: b.state, solid: b.zone.body.enable })),
+          orbs: () => this.orbList.map(o => ({ ready: o.ready })),
+          checkpoint: () => this.checkpoint && { x: this.checkpoint.x, y: this.checkpoint.y },
+          goto: (i) => this.loadRoom(i),
+          load: (grid) => this.loadRoom(-1, grid),
+        };
+
+        // Hook for the difficulty measurer (.claude/skills/platformer-levels/scripts/measure-difficulty.mjs)
+        window.__levels = {
+          rooms: ROOMS.map(r => ({ id: r.name, area: r.area, beat: r.beat })),
+          goto: (i) => {
+            this.time.removeAllEvents();
+            for (const key of Object.values(this.keys)) key.reset();
+            this.loadRoom(i);
+            this.player.body.setVelocity(0, 0);
+            this.hookRoom = i;
+            this.hookDeaths = this.deaths;
+          },
+          state: () => {
+            const b = this.player.body;
+            return { x: this.player.x, y: this.player.y, vx: b.velocity.x, vy: b.velocity.y,
+                     onGround: this.onGround(),
+                     dead: this.deaths !== this.hookDeaths, done: this.roomIndex !== this.hookRoom || this.won,
+                     room: this.roomIndex, finished: this.won };
+          },
+        };
+      }
+
+      // Fresh run of the whole chapter: clear the timer and death count, go to the first room
+      startChapter() {
+        this.playTime = 0;  // s played in this run of the chapter
+        this.deaths = 0;
+        this.bonusCleared = new Set();  // optional rooms finished in this run
+        this.sectionStats = SECTIONS.map(s => ({ number: s.number, name: s.name, time: 0, deaths: 0 }));
+        this.loadRoom(0);
+      }
+
+      // Build room i from its grid (or a custom grid for tests) and put the player at its start, or at the room's
+      // lit checkpoint if atCheckpoint (a restart after a death). Any other load forgets the checkpoint.
+      loadRoom(i, grid = ROOMS[i].grid, atCheckpoint = false) {
+        if (!atCheckpoint || this.checkpoint?.room !== i) this.checkpoint = null;
+        this.roomIndex = i;
+        this.grid = grid;
+        this.won = false;
+        this.dying = false;
+        this.tweens.killAll();
+        this.platforms.clear(true, true);
+        this.spikes.clear(true, true);
+        this.exits.clear(true, true);
+        this.springs.clear(true, true);
+        this.crumbles.clear(true, true);
+        this.orbs.clear(true, true);
+        this.checkpoints.clear(true, true);
+        this.roomArt.clear(true, true);
+        this.endScreen.setVisible(false);
+        this.roomTime = 0;  // s since the room (re)started; drives crumbling blocks and orbs
+        const width = grid[0].length * TILE;
+        this.physics.world.setBounds(0, 0, width, GAME_HEIGHT);
+        this.cameras.main.setBounds(0, 0, width, GAME_HEIGHT);
+        this.crumbleBlocks = [];
+        this.orbList = [];
+
+        for (const { c, r, w, h } of solidRects(grid)) {
+          this.platforms.add(this.add.rectangle((c + w / 2) * TILE, (r + h / 2) * TILE, w * TILE, h * TILE, 0x4f6d7a));
+        }
+        for (const { c, r, w } of tileRuns(grid, 'C')) {
+          // One body for the whole run (no seams); drawn tile by tile with gaps and cracks so it looks breakable
+          const zone = this.add.zone((c + w / 2) * TILE, (r + 0.5) * TILE, w * TILE, TILE);
+          this.crumbles.add(zone);
+          const art = [];
+          for (let k = 0; k < w; k++) {
+            const x = (c + k) * TILE, y = r * TILE;
+            art.push(this.add.rectangle(x + TILE / 2, y + TILE / 2, TILE - 2, TILE - 2, CRUMBLE_COLOR).setStrokeStyle(2, 0x6e5232));
+            art.push(this.add.line(0, 0, x + 9, y + 4, x + 15, y + 15, 0x6e5232).setOrigin(0).setLineWidth(2));
+            art.push(this.add.line(0, 0, x + 15, y + 15, x + 24, y + 21, 0x6e5232).setOrigin(0).setLineWidth(2));
+          }
+          for (const a of art) { a.baseX = a.x; a.baseY = a.y; this.roomArt.add(a); }
+          // Dotted outline left behind while the block is gone, so the player knows it comes back
+          const ghost = this.add.rectangle((c + w / 2) * TILE, (r + 0.5) * TILE, w * TILE - 2, TILE - 2)
+            .setStrokeStyle(2, CRUMBLE_COLOR, 0.35).setVisible(false);
+          this.roomArt.add(ghost);
+          const block = { zone, art, ghost, state: 'solid', until: 0 };
+          zone.block = block;
+          this.crumbleBlocks.push(block);
+        }
+        for (const { c, r, w } of tileRuns(grid, 'K')) {
+          // The trigger covers the whole run; a flag post stands in its middle on the tile below, and the player
+          // restarts just left of it (so the post stays in sight)
+          const zone = this.add.zone((c + w / 2) * TILE, (r + 0.5) * TILE, w * TILE, TILE);
+          this.checkpoints.add(zone);
+          const x = (c + w / 2) * TILE, foot = (r + 1) * TILE;
+          this.roomArt.add(this.add.rectangle(x + 6, foot, 4, TILE * 1.6, 0xdddddd).setOrigin(0.5, 1));
+          const flag = this.add.triangle(x + 8, foot - TILE * 1.6, 0, 0, 22, 9, 0, 18, CHECKPOINT_COLOR).setOrigin(0);
+          this.roomArt.add(flag);
+          const spot = { x: x - 14, y: foot - PLAYER_SIZE / 2 };
+          const lit = this.checkpoint && this.checkpoint.x === spot.x && this.checkpoint.y === spot.y;
+          if (lit) flag.setFillStyle(CHECKPOINT_LIT_COLOR);
+          zone.checkpoint = { ...spot, flag, lit };
+        }
+        grid.forEach((row, r) => [...row].forEach((ch, c) => {
+          const x = c * TILE, y = r * TILE;
+          if (ch === '^') {
+            this.roomArt.add(this.add.triangle(x, y, 0, TILE, TILE / 4, 4, TILE / 2, TILE, 0xe0475b).setOrigin(0));
+            this.roomArt.add(this.add.triangle(x + TILE / 2, y, 0, TILE, TILE / 4, 4, TILE / 2, TILE, 0xe0475b).setOrigin(0));
+            const { insetX, insetTop } = SPIKE_HITBOX;
+            const hit = this.add.zone(x + TILE / 2, y + (TILE + insetTop) / 2, TILE - 2 * insetX, TILE - insetTop);
+            this.spikes.add(hit);
+          } else if (ch === 'D' || ch === 'G' || ch === 'B') {
+            // Door / flag stands on the tile below and is two tiles tall
+            const zone = this.add.zone(x + TILE / 2, y, TILE, TILE * 2);
+            zone.isGoal = ch === 'G';
+            zone.isBonus = ch === 'B';
+            this.exits.add(zone);
+            if (zone.isGoal) {
+              this.roomArt.add(this.add.rectangle(x + 6, y, 4, TILE * 2, 0xdddddd));
+              this.roomArt.add(this.add.triangle(x + 8, y - TILE + 2, 0, 0, 22, 9, 0, 18, 0xffe14d).setOrigin(0));
+            } else if (zone.isBonus) {
+              // Purple door with a star: clearly not the way on
+              const inBonus = i >= 0 && ROOMS[i].beat === 'optional';
+              if (!inBonus) {
+                // The way into a bonus room: a slow glow says "special, a side trip", and a crown of spikes in the
+                // game's danger red says "hard" (art only, they don't hurt)
+                const glow = this.add.rectangle(x + TILE / 2, y, TILE + 12, TILE * 2 + 12, 0xb48cf0, 0.5);
+                this.roomArt.add(glow);
+                this.tweens.add({ targets: glow, alpha: 0.1, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+              }
+              this.roomArt.add(this.add.rectangle(x + TILE / 2, y, TILE - 4, TILE * 2, 0x5b3b8a).setStrokeStyle(3, 0xb48cf0));
+              this.roomArt.add(this.add.star(x + TILE / 2, y - 10, 5, 3, 7, 0xffe14d));
+              if (!inBonus) {
+                for (let k = 0; k < 2; k++) {
+                  this.roomArt.add(this.add.triangle(x + 2 + k * 14, y - TILE - 13, 0, 14, 7, 0, 14, 14, 0xe0475b).setOrigin(0));
+                }
+              }
+            } else {
+              this.roomArt.add(this.add.rectangle(x + TILE / 2, y, TILE - 4, TILE * 2, 0x8a5a3b).setStrokeStyle(3, 0xc58b5c));
+              this.roomArt.add(this.add.circle(x + TILE - 9, y + 4, 3, 0xffe14d));
+            }
+          } else if (ch === 'S') {
+            // A low pad on the floor of its cell; the trigger covers the pad, so walking onto it bounces too
+            const pad = this.add.rectangle(x + TILE / 2, y + TILE - 5, TILE - 2, 8, 0x5fd36b).setOrigin(0.5, 1);
+            const coil = this.add.rectangle(x + TILE / 2, y + TILE, TILE - 12, 5, 0x2f7a3a).setOrigin(0.5, 1);
+            this.roomArt.add(coil);
+            this.roomArt.add(pad);
+            const zone = this.add.zone(x + TILE / 2, y + TILE - 6, TILE - 4, 12);
+            zone.pad = pad;
+            this.springs.add(zone);
+          } else if (ch === 'O') {
+            // Floats in the middle of its cell; the trigger is a little bigger than the gem
+            const cx = x + TILE / 2, cy = y + TILE / 2;
+            const zone = this.add.zone(cx, cy, 26, 26);
+            this.orbs.add(zone);
+            const gem = this.add.rectangle(cx, cy, 15, 15, ORB_COLOR).setAngle(45).setStrokeStyle(2, 0xffffff);
+            const ghost = this.add.rectangle(cx, cy, 15, 15).setAngle(45).setStrokeStyle(2, ORB_COLOR, 0.35).setVisible(false);
+            this.roomArt.add(ghost);
+            this.roomArt.add(gem);
+            const orb = { zone, gem, ghost, baseY: cy, ready: true, until: 0 };
+            zone.orb = orb;
+            this.orbList.push(orb);
+          } else if (ch === 'P') {
+            this.spawn = { x: x + TILE / 2, y: y + TILE - PLAYER_SIZE / 2 };
+          }
+        }));
+
+        const start = this.checkpoint || this.spawn;
+        this.player.setPosition(start.x, start.y).setFillStyle(PLAYER_COLOR);
+        this.player.body.reset(start.x, start.y);
+        this.player.body.setEnable(true);
+        this.lastGrounded = -Infinity;
+        this.jumpPressed = false;
+        this.jumpBuffer = 0;
+        this.rising = false;
+        this.sprung = false;
+        this.airJumpsLeft = AIR_JUMPS;
+        this.cameras.main.startFollow(this.player, true);  // jumps straight to the player, then follows sideways
+        if (i >= 0 && ROOMS[i].beat === 'optional') {
+          this.roomText.setText(`Section ${ROOMS[i].section} · Area ${ROOMS[i].area} · Bonus room`);
+        } else if (i >= 0) {
+          const { section, area } = ROOMS[i];
+          const inArea = ROOMS.filter(r => r.area === area && r.beat !== 'optional');
+          this.roomText.setText(`Section ${section} · Area ${area} · Room ${inArea.indexOf(ROOMS[i]) + 1} / ${inArea.length}`);
+        } else {
+          this.roomText.setText('Test room');
+        }
+        this.fx.roomLoaded(atCheckpoint);
+        this.sfx.roomLoaded(atCheckpoint);
+      }
+
+      // Crumbling block: standing on it starts the shake (touching its side or underside doesn't, and neither does
+      // brushing its top corner on the way up past it)
+      standOnCrumble(block) {
+        if (block.state !== 'solid' || this.dying) return;
+        const body = this.player.body;
+        if (body.velocity.y < 0 || body.bottom > block.zone.body.top + 1) return;
+        block.state = 'shaking';
+        block.until = this.roomTime + CRUMBLE_DELAY;
+      }
+
+      updateCrumbles() {
+        const p = this.player.body;
+        for (const b of this.crumbleBlocks) {
+          if (b.state === 'shaking') {
+            const dx = Math.sin(this.roomTime * 70) * 2;
+            for (const a of b.art) a.x = a.baseX + dx;
+            if (this.roomTime >= b.until) {
+              b.state = 'gone';
+              b.until = this.roomTime + CRUMBLE_RETURN;
+              b.zone.body.enable = false;
+              b.ghost.setVisible(true);
+              for (const a of b.art) a.x = a.baseX;
+              this.tweens.add({ targets: b.art, y: '+=40', alpha: 0, duration: 250, ease: 'Quad.easeIn' });
+            }
+          } else if (b.state === 'gone' && this.roomTime >= b.until) {
+            // Come back only once the player is out of the way, so it can't trap them
+            const z = b.zone.body;
+            const inside = p.enable && p.right > z.left && p.left < z.right && p.bottom > z.top && p.top < z.bottom;
+            if (inside) continue;
+            b.state = 'solid';
+            b.zone.body.enable = true;
+            b.ghost.setVisible(false);
+            this.tweens.killTweensOf(b.art);
+            for (const a of b.art) { a.setPosition(a.baseX, a.baseY); a.alpha = 0; }
+            this.tweens.add({ targets: b.art, alpha: 1, duration: 150 });
+          }
+        }
+      }
+
+      // Checkpoint: the room restarts here after a death, until the player leaves the room
+      touchCheckpoint(cp) {
+        if (cp.lit || this.dying || this.won) return;
+        cp.lit = true;
+        this.checkpoint = { room: this.roomIndex, x: cp.x, y: cp.y };
+        cp.flag.setFillStyle(CHECKPOINT_LIT_COLOR);
+        this.tweens.add({ targets: cp.flag, scaleX: 1.4, scaleY: 1.4, duration: 90, yoyo: true });
+      }
+
+      // Refill orb: gives the double jump back, but only if it's been spent (otherwise the orb stays for later)
+      touchOrb(orb) {
+        if (!orb.ready || this.dying || this.won || this.airJumpsLeft >= AIR_JUMPS) return;
+        this.airJumpsLeft = AIR_JUMPS;
+        orb.ready = false;
+        orb.until = this.roomTime + ORB_RETURN;
+        orb.gem.setVisible(false);
+        orb.ghost.setVisible(true);
+        const ring = this.add.circle(orb.gem.x, orb.gem.y, 10).setStrokeStyle(3, ORB_COLOR);
+        this.roomArt.add(ring);
+        this.tweens.add({ targets: ring, scale: 3, alpha: 0, duration: 250, onComplete: () => ring.destroy() });
+      }
+
+      updateOrbs() {
+        for (const o of this.orbList) {
+          if (!o.ready && this.roomTime >= o.until) {
+            o.ready = true;
+            o.gem.setVisible(true).setScale(0.3);
+            o.ghost.setVisible(false);
+            this.tweens.add({ targets: o.gem, scale: 1, duration: 150, ease: 'Back.easeOut' });
+          }
+          const y = o.baseY + Math.sin(this.roomTime * 3) * 3;  // bob gently so it reads as a pickup
+          o.gem.y = y;
+          o.ghost.y = y;
+        }
+      }
+
+      // Spring pad: launch high, give back the double jump. Only from above (not while already rising).
+      bounce(spring) {
+        const body = this.player.body;
+        if (this.dying || this.won || body.velocity.y < 0) return;
+        body.maxVelocity.y = SPRING_VELOCITY;  // Phaser's cap works both ways; lift it for the rise (restored in update)
+        body.setVelocityY(-SPRING_VELOCITY);
+        this.airJumpsLeft = AIR_JUMPS;
+        this.lastGrounded = -Infinity;  // no coyote jump off the pad: it would replace the bounce with a lower jump
+        this.jumpBuffer = 0;            // a press made just before landing on the pad doesn't fire on the way up
+        this.rising = false;            // releasing jump doesn't cut the bounce
+        this.sprung = true;
+        this.tweens.add({ targets: spring.pad, scaleY: 0.35, duration: 60, yoyo: true });
+        this.fx.bounce(spring);
+        this.sfx.bounce();
+      }
+
+      die() {
+        if (this.dying || this.won) return;
+        this.dying = true;
+        this.deaths++;
+        const section = this.sectionStats[ROOMS[this.roomIndex]?.section - 1];
+        if (section) section.deaths++;
+        this.player.setFillStyle(0xe0475b);
+        this.player.body.setEnable(false);
+        this.fx.die();
+        this.sfx.die();
+        const room = this.roomIndex;
+        this.time.delayedCall(DEATH_PAUSE, () => { if (this.roomIndex === room) this.loadRoom(room, this.grid, true); });
+      }
+
+      reachExit(exit) {
+        if (this.dying || this.won) return;
+        // Main path: a bonus door leads into the optional room right after this one; doors and flags skip optional
+        // rooms. Optional room: its D clears it and goes on to the main room after the one it branched from (so the
+        // player doesn't replay that room); its B leaves without clearing, back to the start of the branch room.
+        let next = this.roomIndex + 1;
+        const optional = ROOMS[this.roomIndex]?.beat === 'optional';
+        if (optional && exit.isBonus) {
+          next = this.roomIndex - 1;
+        } else if (!exit.isBonus) {
+          if (optional) this.bonusCleared.add(this.roomIndex);
+          while (ROOMS[next]?.beat === 'optional') next++;
+        }
+        // A test room's flag ends the chapter, and so does clearing a bonus room that branches off the last room
+        const lastRoom = this.roomIndex < 0 || next >= ROOMS.length;
+        if (lastRoom && (exit.isGoal || optional)) {
+          this.won = true;
+          this.player.body.setEnable(false);
+          this.showEndScreen();
+          this.fx.win(exit);
+          this.sfx.win();
+          return;
+        }
+        // Door, or the flag at the end of a section: on to the next room.
+        // Swap rooms after this physics step, not in the middle of it
+        this.dying = true;
+        this.fx.exit(exit);
+        this.sfx.exit(exit);
+        this.time.delayedCall(0, () => this.loadRoom(next));
+      }
+
+      showEndScreen() {
+        const lines = [`Time  ${formatTime(this.playTime)}`, `Deaths  ${this.deaths}`];
+        const bonus = ROOMS.filter(r => r.beat === 'optional').length;
+        if (bonus) lines.push(`Bonus rooms  ${this.bonusCleared.size} / ${bonus}`);
+        if (this.sectionStats.length > 1) {
+          lines.push('');
+          for (const s of this.sectionStats) lines.push(`${s.number}. ${s.name}   ${formatTime(s.time)}   ${s.deaths} deaths`);
+        }
+        lines.push('', 'Press Enter to play again');
+        this.endBody.setText(lines.join('\n'));
+        this.endScreen.setVisible(true);
+        this.updateStatsText();
+      }
+
+      updateStatsText() {
+        const text = `Deaths ${this.deaths} · ${formatTime(this.playTime, true)}`;
+        if (this.statsText.text !== text) this.statsText.setText(text);
+      }
+
+      update(time, delta) {
+        const body = this.player.body;
+        const k = this.keys;
+        const left = k.LEFT.isDown || k.A.isDown;
+        const right = k.RIGHT.isDown || k.D.isDown;
+        const jumpHeld = k.UP.isDown || k.W.isDown || k.SPACE.isDown;
+
+        // Chapter timer: runs until the end screen, including death pauses
+        const dt = delta / 1000;
+        this.roomTime += dt;
+        if (!this.won) {
+          this.playTime += dt;
+          const section = this.sectionStats[ROOMS[this.roomIndex]?.section - 1];
+          if (section) section.time += dt;
+        }
+        this.updateStatsText();
+        this.updateCrumbles();
+        this.updateOrbs();
+
+        body.setAccelerationX(left === right ? 0 : (left ? -RUN_ACCEL : RUN_ACCEL));
+
+        const onGround = this.onGround();
+        if (onGround) {
+          this.lastGrounded = time;
+          this.airJumpsLeft = AIR_JUMPS;
+        }
+
+        // Jump buffer: a press stays queued for JUMP_BUFFER seconds
+        this.jumpBuffer = this.jumpPressed ? JUMP_BUFFER : Math.max(0, this.jumpBuffer - delta / 1000);
+        const jumpQueued = this.jumpPressed || this.jumpBuffer > 0;
+        this.jumpPressed = false;
+        if (jumpQueued && (time - this.lastGrounded) / 1000 <= COYOTE_TIME) {
+          // Ground jump, with coyote time + input buffering
+          this.jump(JUMP_VELOCITY);
+          this.lastGrounded = -Infinity;
+          this.fx.jump();
+          this.sfx.jump();
+        } else if (jumpQueued && this.airJumpsLeft > 0 && this.timeToLand() > this.jumpBuffer
+                   && !(this.sprung && body.velocity.y < -AIR_JUMP_VELOCITY)) {
+          // Air jump: replaces any fall speed so it always gives a real boost.
+          // Skipped while the player will land before the buffer runs out, so an early press becomes a ground jump.
+          // Also skipped while a spring bounce is still rising faster than an air jump, so it isn't wasted.
+          this.jump(AIR_JUMP_VELOCITY);
+          this.airJumpsLeft--;
+          this.fx.airJump();
+          this.sfx.airJump();
+        }
+
+        // Variable jump height: releasing early cuts the rise
+        if (this.rising && !jumpHeld && body.velocity.y < 0) {
+          body.setVelocityY(body.velocity.y * JUMP_CUT);
+          this.rising = false;
+        }
+        if (body.velocity.y >= 0) this.rising = false;
+        if (body.velocity.y >= 0 || onGround) {
+          this.sprung = false;
+          body.maxVelocity.y = MAX_FALL_SPEED;
+        }
+
+        if (!this.dying && !this.won) this.player.setFillStyle(this.airJumpsLeft > 0 ? PLAYER_COLOR : PLAYER_SPENT_COLOR);
+      }
+
+      // Standing on something solid. Only collisions count: Phaser also sets body.touching on overlaps, which would
+      // make an orb or door trigger at the player's feet count as ground. Ignored while moving up, so the frame
+      // right after takeoff doesn't count.
+      onGround() {
+        const body = this.player.body;
+        return body.blocked.down && body.velocity.y >= 0;
+      }
+
+      // Seconds until the player falls onto a platform below, assuming no input (Infinity if none).
+      // Crumbling blocks count while they are solid.
+      timeToLand() {
+        const body = this.player.body;
+        const vy = body.velocity.y;
+        let best = Infinity;
+        for (const p of [...this.platforms.getChildren(), ...this.crumbles.getChildren()]) {
+          const pb = p.body;
+          if (!pb.enable) continue;
+          if (pb.right <= body.left || pb.left >= body.right || pb.top < body.bottom - 1) continue;
+          const d = pb.top - body.bottom;
+          const t = (-vy + Math.sqrt(vy * vy + 2 * GRAVITY * d)) / GRAVITY;
+          best = Math.min(best, t);
+        }
+        return best;
+      }
+
+      jump(velocity) {
+        this.player.body.setVelocityY(-velocity);
+        this.jumpBuffer = 0;
+        this.rising = true;
+      }
+    }
+
+    const game = window.__game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: 'game',
+      width: GAME_WIDTH,
+      height: GAME_HEIGHT,
+      backgroundColor: '#2a2d3e',
+      physics: { default: 'arcade', arcade: { gravity: { y: GRAVITY } } },
+      scene: Main,
+    });
+  </script>
+</body>
+</html>
