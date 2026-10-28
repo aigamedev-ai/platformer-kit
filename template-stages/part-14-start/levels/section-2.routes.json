@@ -1,0 +1,290 @@
+{
+ "Camp": [
+  {
+   "press": "right"
+  }
+ ],
+ "Cracked floor": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 430
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Keep moving": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1140
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Stepping stones": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 90
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "after": 0.06
+  }
+ ],
+ "Rubble path": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 250
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Crumbling spire": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 100
+   }
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 200
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 345
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 520
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Spring to the crack": [
+  {
+   "press": "right"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 499
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Climbing stones": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 61
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.0333
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.1
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Crumble test": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 239
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": "land",
+   "after": 0.2667
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Solid ground": [
+  {
+   "press": "right"
+  }
+ ]
+}

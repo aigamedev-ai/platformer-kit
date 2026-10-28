@@ -15,6 +15,9 @@ One folder per part of the [make-a-platformer series](https://aigamedev.ai/serie
 | 9 | [When the simulated player reacts late](part-09-full-player-model/) | `part-09-start` | platformer-levels |
 | 10 | [Sound effects in one prompt](part-10-sound/) | `part-10-start` | game-sound |
 | 11 | [Pixel art with Claude Code and a local image model](part-11-pixel-art/) | `part-11-start` | pixel-art |
+| 12 | [From 34 rooms in a row to a journey](part-12-chapter-structure/) | `part-12-start` | platformer-levels |
+| 13 | [Animating the hero with Claude Code](part-13-character-animation/) | `part-13-start` | character-animation |
+| 14 | [An adaptive soundtrack in code](part-14-game-music/) | `part-14-start` | game-music |
 
 ## Steps
 
@@ -23,7 +26,7 @@ One folder per part of the [make-a-platformer series](https://aigamedev.ai/serie
 
    ```sh
    cp -r template-stages/part-08-start ~/pk-part-08 && cd ~/pk-part-08
-   npm install && npx playwright install chromium   # parts 6 to 11, which have a package.json
+   npm install && npx playwright install chromium   # parts 6 to 14, which have a package.json
    ```
 
 3. Start Claude Code in that folder and send the prompt from the part's README. Don't add follow-ups: the recorded sessions got none (part 7 says which of its prompts came from our own checks).
@@ -45,7 +48,7 @@ claude -p "<the prompt>" --model opus \
 - `--setting-sources project,local` skips your user settings, and with them your installed plugins. `--plugin-dir` loads this plugin anyway, and `--strict-mcp-config` skips your MCP servers.
 - `--dangerously-skip-permissions` lets the session work alone. Only use it in a throwaway copy of a starting folder.
 - Check the first `system/init` line in `session.jsonl`: `skills` should list only `platformer-kit:*` and Claude Code's own skills, and `plugins` only `platformer-kit` and the built-in `cc-plugin-*` ones.
-- The plugin brings all five skills. The recorded sessions had only the skills each part lists, as project skills. For the closest match, skip `--plugin-dir` and copy just those skill folders from `plugins/platformer-kit/skills/` into the starting folder's `.claude/skills/`.
+- The plugin brings all seven skills. The recorded sessions had only the skills each part lists, as project skills. For the closest match, skip `--plugin-dir` and copy just those skill folders from `plugins/platformer-kit/skills/` into the starting folder's `.claude/skills/`.
 - Run sessions one at a time. Parallel sessions share `/tmp`, and their test browsers can collide.
 
 Your result will differ from the post. Every run is different, and the skills here are newer than the recordings: each post's "What the session missed" list has since been turned into skill rules.

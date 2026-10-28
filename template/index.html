@@ -6,21 +6,26 @@
   <style>
     body { margin: 0; background: #070918; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; color: #ccc; }
     p { margin: 8px; font-size: 14px; }
-    #mute { font: 13px sans-serif; color: #ccc; background: #2a2d3e; border: 1px solid #4f6d7a; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+    #mute, #music { font: 13px sans-serif; color: #ccc; background: #2a2d3e; border: 1px solid #4f6d7a; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
   </style>
   <script src="vendor/phaser.min.js"></script>
 </head>
 <body>
   <div id="game"></div>
-  <p>Arrow keys / A-D to move &middot; Up / W / Space to jump (press again in mid-air to double jump) &middot; Enter on the end screen to play again &middot; J to switch effects on/off &middot; M to mute sound &middot; add ?art=0 to the address for the plain shapes</p>
-  <button id="mute" type="button"></button>
+  <p>Arrow keys / A-D to move &middot; Up / W / Space to jump (press again in mid-air to double jump) &middot; Enter on the end screen to play again &middot; gold stars wait in the glowing side doors (optional) &middot; J to switch effects on/off &middot; M to mute sound &middot; N to mute music &middot; add ?art=0 to the address for the plain shapes</p>
+  <div><button id="mute" type="button"></button> <button id="music" type="button"></button></div>
   <script src="levels/section-1.js"></script>
   <script src="levels/section-2.js"></script>
   <script src="levels/section-3.js"></script>
   <script src="levels/section-4.js"></script>
+  <script src="levels/section-5.js"></script>
   <script src="art/edge-terrain.js"></script>
   <script src="art/sheet.js"></script>
+  <script src="art/hero-anim.js"></script>
+  <script src="art/secondary-motion.js"></script>
   <script src="art/bg.js"></script>
+  <script src="music/music.js"></script>
+  <script src="music/song.js"></script>
   <script>
     // ---- Tuning ----
     const GAME_WIDTH = 800;
@@ -66,14 +71,23 @@
     //   K  checkpoint: a post standing on the tile below. Touching it lights it, and from then on a death restarts the
     //      room there instead of at P (the room itself is rebuilt fresh). Touching K's in the same row are one
     //      checkpoint, so a whole rest platform can count; the post stands in the middle of the run.
+    //   *  star: the collectible. Touching it picks it up; it counts once the player leaves through the room's exit
+    //      (D or G) holding it, so a death drops it. One in every optional room; never needed to go on.
+    // Room kinds (room.kind): 'main' (default), 'rest' (a section's rest spot: no hazards, a campfire, the chapter map),
+    // 'optional' (a side room behind a bonus door) and 'chase' (a storm rolls in from the left on a fixed schedule:
+    // chase: { from, delay, speed }, its front at from + speed * max(0, roomTime - delay); touching it restarts the
+    // room). room.vista ('spring', 'crumble', 'orb', 'mix' or 'storm') draws what lies ahead far off in a rest spot.
     const TILE = 32;
     const COLS = 25, ROWS = 15;
 
     // The chapter is a list of sections, each in its own file (levels/section-N.js, loaded by a <script> tag above),
     // so sections can be built separately. A file adds { number, name, rooms } to window.SECTIONS; a room is
-    // { name, area, beat, grid }. Room names are unique in the whole chapter and area numbers run on from the
-    // previous section. Every section's last main room ends at a goal flag. A room with beat 'optional' is a side
+    // { name, area, beat, kind, grid }; every section opens with a rest spot (kind 'rest'). Room names are unique in the whole chapter and area numbers run on from the
+    // previous section. Every section's last main room ends at a goal flag. A room with kind 'optional' is a side
     // room: it comes right after the room whose bonus door B leads into it.
+    const KINDS = ['main', 'rest', 'optional', 'chase'];
+    // A side room: kind 'optional' (beat 'optional' also counts, as in older room data)
+    const isOptional = r => r.kind === 'optional' || r.beat === 'optional';
     function loadSections() {
       const sections = [...(window.SECTIONS || [])].sort((a, b) => a.number - b.number);
       const problems = [];
@@ -96,19 +110,30 @@
             problems.push(`${at}: grid must be ${ROWS} rows of the same length, at least ${COLS} tiles`);
           }
           const all = g.join('');
-          const bad = [...new Set(all.replace(/[.#^PSCODGBK]/g, ''))];
+          const bad = [...new Set(all.replace(/[.#^PSCODGBK*]/g, ''))];
           if (bad.length) problems.push(`${at}: unknown tiles ${bad.join(' ')}`);
           if (all.split('P').length !== 2) problems.push(`${at}: needs exactly one P`);
-          const optional = room.beat === 'optional';
-          const last = !optional && !s.rooms.slice(j + 1).some(r => r.beat !== 'optional');  // last main room
+          const optional = isOptional(room);
+          const last = !optional && !s.rooms.slice(j + 1).some(r => !isOptional(r));  // last main room
           const prev = s.rooms[j - 1], next = s.rooms[j + 1];
           if (last && !all.includes('G')) problems.push(`${at}: the last room of a section needs a goal flag G`);
           if (!last && !all.includes('D') && !(!optional && all.includes('G'))) problems.push(`${at}: needs a door D`);
           if (optional && all.includes('G')) problems.push(`${at}: an optional room can't have a goal flag`);
-          if (!optional && all.includes('B') && next?.beat !== 'optional') problems.push(`${at}: a bonus door B needs an optional room right after it`);
-          if (optional && !(prev && prev.beat !== 'optional' && prev.grid?.join('').includes('B'))) {
+          if (!optional && all.includes('B') && !(next && isOptional(next))) problems.push(`${at}: a bonus door B needs an optional room right after it`);
+          if (optional && !(prev && !isOptional(prev) && prev.grid?.join('').includes('B'))) {
             problems.push(`${at}: an optional room must come right after a room with a bonus door B`);
           }
+          // Chapter structure: rest spots, side rooms with a star, chase segments with a schedule
+          const kind = room.kind || 'main';
+          if (!KINDS.includes(kind)) problems.push(`${at}: kind must be one of ${KINDS.join(', ')}`);
+          if (j === 0 && kind !== 'rest') problems.push(`${at}: a section opens with a rest spot (kind 'rest')`);
+          if (kind === 'rest' && (/[\^C]/.test(all) || room.chase)) problems.push(`${at}: a rest spot can't have spikes, crumbling blocks or a chase`);
+          if (optional && !all.includes('*')) problems.push(`${at}: an optional room needs a star *`);
+          const c = room.chase;
+          if (kind === 'chase' && !(c && [c.from, c.delay, c.speed].every(Number.isFinite) && c.speed > 0)) {
+            problems.push(`${at}: a chase room needs chase: { from, delay, speed }`);
+          }
+          if (kind !== 'chase' && c) problems.push(`${at}: only a chase room (kind 'chase') can have a chase`);
         });
       });
       if (problems.length) {
@@ -119,7 +144,12 @@
       return sections;
     }
     const SECTIONS = loadSections();
-    const ROOMS = SECTIONS.flatMap(s => s.rooms.map(r => ({ ...r, section: s.number })));
+    const ROOMS = SECTIONS.flatMap(s => s.rooms.map(r => ({ ...r, section: s.number,
+      kind: isOptional(r) ? 'optional' : (r.kind || 'main') })));
+    // Stars: one '*' tile each, known by room name and tile, counted per section
+    const starKey = (room, c, r) => `${room}@${c},${r}`;
+    const STARS = ROOMS.flatMap(room => room.grid.flatMap((row, r) => [...row].flatMap((ch, c) =>
+      ch === '*' ? [{ key: starKey(room.name, c, r), section: room.section }] : [])));
 
     // 83.4 s -> "1:23.40"; whole: true -> "1:23"
     function formatTime(seconds, whole = false) {
@@ -171,6 +201,10 @@
     const ORB_COLOR = 0x6ff2e8;
     const CHECKPOINT_COLOR = 0x6b7390;      // checkpoint flag before it's touched
     const CHECKPOINT_LIT_COLOR = 0x7cf29a;  // ... and once it's the restart point
+    const STAR_COLOR = 0xffd34d;            // the collectible: a gold star, unlike the cyan orb
+    const STORM_COLOR = 0x1b1030, STORM_EDGE = 0xc8a0ff;
+    const CHASE_LOOK_AHEAD = 160;           // px the camera looks ahead of the player in a chase (player left of centre)
+    const MAP_TIME = 3;                     // s the chapter map stays up in a rest spot if the player doesn't move
 
     // ---- Juice ----
     // Visual feedback only: nothing here touches a body, a velocity, a game timer or input. The player's body is an
@@ -252,7 +286,7 @@
 
       jump() {
         if (!JUICE.on) return;
-        this.setSquash(JUICE.jumpStretch, JUICE.jumpTime, easeOut);
+        this.setSquash(animShare(JUICE.jumpStretch, ANIM.juiceJump), JUICE.jumpTime, easeOut);
         this.dust(10);
       }
 
@@ -276,7 +310,7 @@
         if (vy < JUICE.landMinSpeed) return;
         const k = clamp01((vy - JUICE.landMinSpeed) / (JUICE.landFullSpeed - JUICE.landMinSpeed));
         const amount = lerp(0.3, 1, k);  // a short hop barely squashes
-        const [w, h] = JUICE.landSquash;
+        const [w, h] = animShare(JUICE.landSquash, ANIM.juiceLand);
         this.setSquash([lerp(1, w, amount), lerp(1, h, amount)], JUICE.landTime, easeBack);
         this.dust(Math.round(JUICE.dust * amount));
         if (vy >= JUICE.heavyLandSpeed) this.shake(...JUICE.heavyLandShake);
@@ -452,8 +486,8 @@
           sy = lerp(q.sy, 1, e);
           if (k >= 1) this.squash = null;
         } else if (JUICE.squash && body.enable) {
-          if (body.blocked.down && Math.abs(body.velocity.x) < 5) {  // idle: breathe
-            const b = JUICE.breathe * Math.sin(this.t / JUICE.breathePeriod * Math.PI * 2);
+          if (body.blocked.down && Math.abs(body.velocity.x) < 5) {  // idle: breathe (with ANIM on, the idle frames do)
+            const b = ANIM.on ? 0 : JUICE.breathe * Math.sin(this.t / JUICE.breathePeriod * Math.PI * 2);
             sy = 1 + b;
             sx = 1 - b;
           } else if (!body.blocked.down && body.velocity.y > 300) {  // fast fall: stretch a little
@@ -565,6 +599,41 @@
       vignette: true,  // darker screen corners
       islandParallax: 0.15,  // how fast the far islands move as the camera follows in wide rooms
     };
+    // ---- Hero animation ----
+    // Wick's poses, picked every frame from what the body is already doing, plus a scarf tail and hood tip on chains
+    // (art/secondary-motion.js) that trail, flop and settle. Visual only: it reads the body after the physics step and
+    // never touches a body, a velocity, a timer or input, and no pose ever waits; any change of input ends a beat on
+    // that same frame. ?anim=0 in the address gives back the earlier frames. Frames from tools/sprites.py (hero2_*).
+    const ANIM = {
+      on: ART.on && !/[?&]anim=0\b/.test(location.search) && !!window.SecondaryMotion && !!window.HERO_ANIM,
+      chains: true,                 // scarf tail and hood tip
+      // Times in ms, speeds in px/s, distances in px
+      idleFrames: [700, 500],       // breath: idle0 (held), idle1 (1 px down)
+      blinkEvery: 3300, blinkTime: 120,
+      momentAfter: 4500,            // idle this long, then a small moment every momentEvery
+      momentEvery: 4000,
+      moments: [['look', 2200], ['back', 900], ['peer', 1600]],  // gaze at the moon, glance back, lift the lantern
+      runMin: 30,                   // slower than this on the ground is idle
+      runStrides: [14, 10, 12],     // px travelled per run drawing: contact, down, passing (twice per cycle)
+      brakeMin: 90,                 // sliding to a stop faster than this, with no key held, shows the brake pose
+      takeoff: 50,                  // crouch on a ground jump while the body is already rising
+      land: [80, 120],              // crouch after a fall, short hop .. hard fall
+      landMin: 200, landFull: 850,  // fall speed for the smallest and the longest landing
+      rise: 120,                    // vertical speed under this (either way) is the apex
+      drop: 620,                    // falling faster than this: the stretched fall pose
+      airJump: 150,                 // tucked pose (as long as the juice's spin when it spins)
+      bounce: 140,                  // stretched pose off a spring
+      juiceJump: 0.6, juiceLand: 0.55,  // share of the juice's jump stretch and land squash kept: the poses add the rest
+      scarf: { points: 5, segment: 4, gravity: 700, drag: 0.18, stiffness: 0.2, rest: [-0.45, 1], flow: 0.8,
+               flowSpeed: RUN_SPEED, widths: [2, 2, 1] },
+      hood: { points: 3, segment: 4, gravity: 600, drag: 0.12, stiffness: 0.35, rest: [-1, 0.55], flow: 0.5,
+              flowSpeed: RUN_SPEED, widths: [2, 1] },
+      bounceKick: 260,              // px/s down into the chains off a spring, so they snap after the launch
+      airJumpKick: 160,
+    };
+    // [sx, sy] scaled toward 1 by k, when the drawn poses carry part of a squash
+    const animShare = ([sx, sy], k) => ANIM.on ? [1 + (sx - 1) * k, 1 + (sy - 1) * k] : [sx, sy];
+
     const HERO_FEET = 14;           // the body's centre is this far above its bottom edge (PLAYER_SIZE / 2)
     const HERO_ART_H = 36;          // hero frames are 16 x 18 art px, drawn at 2x
     const HERO_WARM = 0xffb05a, HERO_COLD = 0x7a9ce0;  // the hero's lantern glow: double jump ready / spent
@@ -602,6 +671,16 @@
         this.face = 1;
         this.runDist = 0;
         this.idleTime = 0;
+        if (ANIM.on) {
+          this.heroCloth = scene.add.graphics().setDepth(0.99);  // scarf tail and hood tip, just behind the hero
+          this.scarf = SecondaryMotion.chain(ANIM.scarf);
+          this.hoodTip = SecondaryMotion.chain(ANIM.hood);
+          this.animState = 'idle';
+          this.beat = null;        // { name, until, acc }: a short pose on top of a state (takeoff, land, airJump, bounce)
+          this.wasGrounded = false;
+          this.lastVy = 0;
+          this.stateTime = 0;      // ms in the current state
+        }
         scene.player.setAlpha(0);
         scene.fx.art.setAlpha(0);
 
@@ -616,7 +695,7 @@
           }
         }
         if (ART.vignette) scene.add.image(0, 0, 'vignette').setOrigin(0).setScrollFactor(0).setDepth(1.8);
-        for (const t of [scene.roomText, scene.statsText]) t.setColor('#b4bcdc').setShadow(2, 2, '#05071a', 0, false, true);
+        for (const t of [scene.roomText, scene.statsText, scene.starText]) t.setColor('#b4bcdc').setShadow(2, 2, '#05071a', 0, false, true);
         scene.endScreen.list[0].setFillStyle(0x05071a, 0.85);
 
         scene.events.on('postupdate', (time, delta) => this.update(delta));  // after the juice has placed its player
@@ -656,6 +735,7 @@
       // After loadRoom: the terrain picture, props and lights for this room (all in roomArt, so the next load clears them)
       room(grid, i) {
         const s = this.scene;
+        this.resetHero();
         const key = 'terrain:' + grid.join('/');  // per grid, not per index: test hooks load raw grids
         const tex = s.textures.exists(key) ? s.textures.get(key)
           : s.textures.addCanvas(key, EdgeTerrain.render({ grid, style: EdgeTerrain.presets.N, art: TILE / 2, scale: 2,
@@ -735,6 +815,160 @@
         }
       }
 
+      // ---- hero animation (ANIM) ----
+
+      // Events from the game, on the frame they happen (the body has already moved)
+      jumped() {
+        if (!ANIM.on) return;
+        // only off real ground: a coyote jump has nothing under the feet to push from
+        if (this.wasGrounded) this.startBeat('takeoff', ANIM.takeoff);
+      }
+      airJumped() {
+        if (!ANIM.on) return;
+        const spin = JUICE.on && JUICE.squash ? JUICE.airJumpSpin : 0;
+        this.startBeat('airJump', Math.max(ANIM.airJump, spin));
+        this.scarf.kick(0, ANIM.airJumpKick);
+        this.hoodTip.kick(0, ANIM.airJumpKick);
+      }
+      bounced() {
+        if (!ANIM.on) return;
+        this.startBeat('bounce', ANIM.bounce);
+        this.scarf.kick(0, ANIM.bounceKick);
+        this.hoodTip.kick(0, ANIM.bounceKick);
+      }
+      startBeat(name, dur) {
+        this.beat = { name, until: this.t + dur, acc: this.scene.player.body.acceleration.x };
+      }
+
+      // Pick the state and the drawing from the body, after the physics step. First match wins: death, a running
+      // beat, air states, ground states, idle moments.
+      animate(delta) {
+        const s = this.scene, body = s.player.body;
+        if (!body.enable) {  // dying: hold the last pose (the juice freezes, flashes and bursts it)
+          this.animState = 'death';
+          this.hero.setFrame(this.animFrame + (this.spent ? '_spent' : ''));
+          return;
+        }
+        const vx = body.velocity.x, vy = body.velocity.y, acc = body.acceleration.x;
+        const grounded = body.blocked.down && vy >= 0;  // the game's own test: a jump pressed this frame is airborne
+        if (acc) this.face = Math.sign(acc);
+        else if (Math.abs(vx) > 20) this.face = Math.sign(vx);
+
+        // landing is a change, not a state: crouch after a real fall, longer the harder the fall
+        if (grounded && !this.wasGrounded && this.lastVy >= ANIM.landMin) {
+          const k = clamp01((this.lastVy - ANIM.landMin) / (ANIM.landFull - ANIM.landMin));
+          this.startBeat('land', lerp(ANIM.land[0], ANIM.land[1], k));
+          this.beat.dur = this.beat.until - this.t;
+        }
+        this.wasGrounded = grounded;
+        this.lastVy = vy;
+
+        // a beat ends early on any change of direction input, or when the ground under it changes
+        const b = this.beat;
+        if (b && (this.t >= b.until || acc !== b.acc || (b.name === 'land') !== grounded)) this.beat = null;
+
+        let state, frame;
+        if (this.beat) {
+          state = this.beat.name;
+          if (state === 'land') frame = (this.beat.until - this.t) > this.beat.dur * 0.4 ? 'crouch' : 'land1';
+          else frame = { takeoff: 'crouch', airJump: 'spin', bounce: 'rise' }[state];
+        } else if (!grounded) {
+          state = vy < -ANIM.rise ? 'rise' : vy <= ANIM.rise ? 'apex' : 'fall';
+          frame = state === 'fall' && vy > ANIM.drop ? 'drop' : state;
+        } else if (Math.abs(vx) > ANIM.runMin) {
+          if (acc * vx < 0) state = frame = 'turn';
+          else if (!acc && (Math.abs(vx) > ANIM.brakeMin || this.animState === 'brake')) state = frame = 'brake';
+          else {
+            state = 'run';
+            if (this.animState !== 'run') this.runDist = 0;  // always start on the contact pose
+            this.runDist += Math.abs(vx) * delta / 1000;
+            frame = 'run' + this.runFrame(this.runDist);
+          }
+        } else {
+          state = 'idle';
+          if (this.animState !== 'idle') this.idleTime = 0;
+          this.idleTime += delta;
+          frame = this.idleFrame(this.idleTime);
+        }
+        if (state !== 'idle') this.idleTime = 0;
+        this.stateTime = state === this.animState ? this.stateTime + delta : 0;
+        this.animState = state;
+        this.animFrame = 'hero2_' + frame;
+        this.animAnchors = HERO_ANIM.anchors[frame];
+        this.spent = s.airJumpsLeft <= 0;
+        this.hero.setFrame(this.animFrame + (this.spent ? '_spent' : ''));
+      }
+
+      // Run drawing for a distance travelled: contact, down, passing, then the same with the other leg
+      runFrame(dist) {
+        const st = ANIM.runStrides, cycle = 2 * st.reduce((a, b) => a + b, 0);
+        let d = dist % cycle;
+        for (let i = 0; i < 6; i++) {
+          d -= st[i % 3];
+          if (d < 0) return i;
+        }
+        return 0;
+      }
+
+      // Idle: a slow breath, a blink now and then, and after a while a small moment (look up, glance back, lantern)
+      idleFrame(t) {
+        if (t >= ANIM.momentAfter) {
+          const m = t - ANIM.momentAfter, i = Math.floor(m / ANIM.momentEvery);
+          const [name, dur] = ANIM.moments[i % ANIM.moments.length];
+          if (m % ANIM.momentEvery < dur) return name;
+        }
+        if (t % ANIM.blinkEvery > ANIM.blinkEvery - ANIM.blinkTime) return 'blink';
+        const [a, b] = ANIM.idleFrames;
+        return t % (a + b) < a ? 'idle0' : 'idle1';
+      }
+
+      // An anchor (art px in the frame, facing right) -> game px, following the sprite's flip, squash and spin
+      heroPoint([ax, ay]) {
+        const h = this.hero;
+        const ox = (ax * 2 - 16) * this.face * h.scaleX, oy = (ay * 2 - (HERO_ART_H - HERO_FEET)) * h.scaleY;
+        const r = h.rotation, c = Math.cos(r), sn = Math.sin(r);
+        return [h.x + ox * c - oy * sn, h.y + ox * sn + oy * c];
+      }
+
+      // The scarf tail and hood tip: chains that follow the anchors every game frame, drawn on the sprite's pixel grid
+      drawCloth(delta) {
+        const s = this.scene, h = this.hero, g = this.heroCloth, body = s.player.body;
+        g.clear();
+        if (!ANIM.chains || !this.animAnchors) return;
+        const dt = s.fx.pauseLeft > 0 ? 0 : delta / 1000;  // frozen in the hit pause
+        const vel = body.enable ? body.velocity : { x: 0, y: 0 };
+        const opts = { facing: this.face, floor: h.y + HERO_FEET * h.scaleY };
+        const [nx, ny] = this.heroPoint(this.animAnchors.neck), [hx, hy] = this.heroPoint(this.animAnchors.hood);
+        const scarf = this.scarf.update(dt, nx, ny, vel, opts);
+        const tip = this.hoodTip.update(dt, hx, hy, vel, opts);
+        // hidden with the hero, and while the respawn pop-in is still tiny (the chains don't scale)
+        if (!h.visible || h.scaleX < 0.7 || h.scaleY < 0.7) return;
+        const grid = { pixel: 2, originX: h.x - 16, originY: h.y - (HERO_ART_H - HERO_FEET) };
+        const flash = h.isTinted && h.tintFill;   // the juice's white hit flash
+        const white = { base: 0xffffff, light: 0xffffff, dark: 0xffffff, outline: 0xffffff };
+        const fill = (x, y, w, hh, c) => g.fillStyle(c, 1).fillRect(x, y, w, hh);
+        SecondaryMotion.paint(SecondaryMotion.raster(tip, { ...grid, widths: ANIM.hood.widths }),
+                              flash ? white : HERO_ANIM.hood, fill);
+        SecondaryMotion.paint(SecondaryMotion.raster(scarf, { ...grid, widths: ANIM.scarf.widths }),
+                              flash ? white : this.spent ? HERO_ANIM.scarfSpent : HERO_ANIM.scarf, fill);
+      }
+
+      // A new room or a respawn: the chains start from their rest shape at the new spot, no beat carries over
+      resetHero() {
+        if (!ANIM.on) return;
+        const p = this.scene.player;
+        this.beat = null;
+        this.wasGrounded = false;
+        this.lastVy = 0;
+        this.animState = 'idle';
+        this.idleTime = 0;
+        this.animAnchors = HERO_ANIM.anchors.idle0;
+        this.animFrame = 'hero2_idle0';
+        const top = p.y - (HERO_ART_H - HERO_FEET);
+        this.scarf.reset(p.x + (this.animAnchors.neck[0] * 2 - 16) * this.face, top + this.animAnchors.neck[1] * 2, this.face);
+        this.hoodTip.reset(p.x + (this.animAnchors.hood[0] * 2 - 16) * this.face, top + this.animAnchors.hood[1] * 2, this.face);
+      }
+
       update(delta) {
         const s = this.scene, p = s.player, body = p.body, fa = s.fx.art;
         const dt = delta / 1000;
@@ -747,7 +981,8 @@
         const x = juice ? fa.x : p.x, y = juice ? fa.y : p.y;
         const sx = juice ? fa.scaleX : 1, sy = juice ? fa.scaleY : 1;
         this.hero.setPosition(x, y).setScale(sx, sy).setAngle(juice ? fa.angle : 0).setVisible(juice ? fa.visible : true);
-        if (body.enable) {
+        if (ANIM.on) this.animate(delta);
+        else if (body.enable) {
           const vx = body.velocity.x, vy = body.velocity.y;
           if (body.acceleration.x) this.face = Math.sign(body.acceleration.x);
           else if (Math.abs(vx) > 20) this.face = Math.sign(vx);
@@ -778,6 +1013,11 @@
         const feet = y + HERO_FEET * sy;
         this.heroGlow.setPosition(x + this.face * 10 * sx, feet - 9).setVisible(this.hero.visible)
           .setTint(this.spent ? HERO_COLD : HERO_WARM);
+        if (ANIM.on) {
+          const [gx, gy] = this.heroPoint(this.animAnchors.lamp);  // the glow follows the drawn lantern
+          this.heroGlow.setPosition(gx, gy);
+          this.drawCloth(delta);
+        }
 
         // ---- lights: slow pulse, orb glows follow their gem
         const pulse = 1 + 0.1 * Math.sin(this.t / 1800 * Math.PI * 2);
@@ -811,6 +1051,8 @@
       landMinSpeed: 200,    // fall speed (px/s) below which landing is silent; louder up to landFullSpeed
       landFullSpeed: 850,
       crackleEvery: 0.09,   // s between crackles while a crumbling block shakes
+      music: 0.2,           // music volume, well under the effects (music/song.js, played by music/music.js)
+      duck: { death: 0.35, thunder: 0.5, rumble: 0.6, finish: 0.4 },  // the music dips under these sounds
     };
 
     // A tone: waveform, pitch slide from -> to over dur, attack and exponential decay, optional vibrato
@@ -892,6 +1134,19 @@
         [523, 659, 784].forEach((f, i) => { last = sfxTone(ac, o, t + i * 0.08, { from: f, dur: i === 2 ? 0.3 : 0.09, vol: 0.15 }); });
         return last;
       },
+      star: (ac, o, t) => {  // a star picked up
+        let last;
+        [988, 1319, 1568, 1976].forEach((f, i) => { last = sfxTone(ac, o, t + i * 0.05, { type: 'triangle', from: f, dur: 0.12, vol: 0.13 }); });
+        return last;
+      },
+      rumble: (ac, o, t) => {  // the storm gathers (its warning)
+        sfxTone(ac, o, t, { type: 'sawtooth', from: 55, to: 45, dur: 1.1, attack: 0.3, vol: 0.12, vibrato: 7, depth: 6 });
+        return sfxNoise(ac, o, t, { dur: 1.2, attack: 0.4, vol: 0.35, freq: 220 });
+      },
+      thunder: (ac, o, t) => {  // ... and starts to move
+        sfxNoise(ac, o, t, { dur: 0.08, vol: 0.4, freq: 3000 });
+        return sfxNoise(ac, o, t + 0.04, { dur: 0.9, attack: 0.02, vol: 0.55, freq: 300 });
+      },
       finish: (ac, o, t) => {  // end of the chapter
         [523, 659, 784, 1047].forEach((f, i) => sfxTone(ac, o, t + i * 0.09, { from: f, dur: 0.1, vol: 0.15 }));
         sfxTone(ac, o, t + 0.36, { type: 'triangle', from: 1047, dur: 0.45, attack: 0.01, vol: 0.2, vibrato: 6, depth: 8 });
@@ -920,14 +1175,21 @@
         this.out = null;
         this.voices = {};  // name -> copies playing
         try { this.muted = localStorage.getItem('sfxMuted') === '1'; } catch { this.muted = false; }
+        try { this.musicMuted = localStorage.getItem('musicMuted') === '1'; } catch { this.musicMuted = false; }
+        this.music = null;
+        this.musicWanted = null;  // the music state the game is in (asked for before the first input too)
         // Browsers only allow audio after a click or key press
         const unlock = () => this.unlock();
         window.addEventListener('keydown', unlock, true);
         window.addEventListener('pointerdown', unlock, true);
         window.addEventListener('keydown', e => { if (e.code === 'KeyM' && !e.repeat) this.toggle(); });
+        window.addEventListener('keydown', e => { if (e.code === 'KeyN' && !e.repeat) this.toggleMusic(); });
         this.button = document.getElementById('mute');
         this.button.addEventListener('mousedown', e => e.preventDefault());  // never takes focus from the game
         this.button.addEventListener('click', () => this.toggle());
+        this.musicButton = document.getElementById('music');
+        this.musicButton.addEventListener('mousedown', e => e.preventDefault());
+        this.musicButton.addEventListener('click', () => this.toggleMusic());
         this.showButton();
       }
 
@@ -937,6 +1199,11 @@
           if (!AC) return;
           this.ac = new AC();
           this.out = sfxOutput(this.ac, this.muted ? 0 : SOUND.master);
+          // The music feeds the same master and limiter, so M silences it too
+          if (window.GameMusic && typeof SONG !== 'undefined') {
+            this.music = new GameMusic(SONG, { ac: this.ac, out: this.out, volume: SOUND.music, muted: this.musicMuted });
+            if (this.musicWanted) this.music.setState(this.musicWanted);
+          }
         }
         if (this.ac.state === 'suspended') this.ac.resume();
       }
@@ -948,8 +1215,23 @@
         this.showButton();
       }
 
+      toggleMusic() {
+        this.musicMuted = !this.musicMuted;
+        try { localStorage.setItem('musicMuted', this.musicMuted ? '1' : '0'); } catch {}
+        this.music?.setMuted(this.musicMuted);  // off: no notes are made; the loop keeps its place
+        this.showButton();
+      }
+
+      // The game calls this on every room change; the same state again changes nothing (a respawn keeps the loop)
+      musicState(name) {
+        if (!name || name === this.musicWanted) return;
+        this.musicWanted = name;
+        this.music?.setState(name);
+      }
+
       showButton() {
         this.button.textContent = this.muted ? '🔇 Sound off (M)' : '🔊 Sound on (M)';
+        this.musicButton.textContent = this.musicMuted ? '🔇 Music off (N)' : '🎵 Music on (N)';
       }
 
       // k: strength 0..1 for sounds that scale (landing)
@@ -959,6 +1241,7 @@
         if ((this.voices[name] || 0) >= SOUND.maxVoices) return;
         const v = SFX_VARY[name] || 0;
         const last = SFX[name](ac, this.out, ac.currentTime + 0.005, 1 + rand(-v, v), k);
+        if (SOUND.duck[name] !== undefined) this.music?.duck({ amount: SOUND.duck[name], hold: 0.3 });
         this.voices[name] = (this.voices[name] || 0) + 1;
         last.onended = () => { this.voices[name]--; };
       }
@@ -980,12 +1263,19 @@
       bounce() { this.sound.play('spring'); }
       die() { this.sound.play('death'); }
       exit(exit) { this.sound.play(exit.isGoal ? 'flag' : exit.isBonus ? 'bonusDoor' : 'door'); }
-      win() { this.sound.play('finish'); }
+      win() {
+        this.sound.play('finish');
+        this.sound.musicState('end');
+      }
+      star() { this.sound.play('star'); }
+      stormMoves() { this.sound.play('thunder'); }
 
       roomLoaded(afterDeath) {
         this.wasGrounded = false;
         this.prevVy = 0;
+        this.sound.musicState(musicStateFor(this.scene.roomIndex));
         if (afterDeath) this.sound.play('respawn');
+        if (this.scene.chase) this.sound.play('rumble');  // the storm's warning, before it moves
       }
 
       update(delta) {
@@ -1025,6 +1315,26 @@
     }
     const SOUND_OUT = new Sound();
 
+    // Which music a room gets (states in music/song.js): rest spots the campfire tune (the last section's, the storm
+    // coming), each section its own tune (calm rooms quieter, test and side rooms with drums), the chase segments
+    // rising one layer at a time, and the room after the chase the sunrise. Test rooms (i < 0) keep the music as is.
+    function musicStateFor(i) {
+      const room = ROOMS[i];
+      if (!room) return null;
+      const rooms = SECTIONS[room.section - 1].rooms;
+      const finale = rooms.some(r => r.kind === 'chase');
+      if (room.kind === 'rest') return finale ? 'watch' : 'rest';
+      if (room.kind === 'chase') {
+        const n = rooms.filter(r => r.kind === 'chase').findIndex(r => r.name === room.name);
+        return 'storm' + Math.min(3, n + 1);
+      }
+      const at = rooms.findIndex(r => r.name === room.name);
+      if (finale) return at > rooms.findIndex(r => r.kind === 'chase') ? 'sunrise' : 'watch';
+      const s = 's' + ((room.section - 1) % 4 + 1);
+      if (isOptional(room) || room.beat === 'test') return s + '-test';
+      return room.beat === 'rest' ? s + '-calm' : s;
+    }
+
     class Main extends Phaser.Scene {
       preload() {
         if (!ART.on) return;
@@ -1041,6 +1351,7 @@
         this.crumbles = this.physics.add.staticGroup();
         this.orbs = this.physics.add.staticGroup();
         this.checkpoints = this.physics.add.staticGroup();
+        this.starZones = this.physics.add.staticGroup();
         this.roomArt = this.add.group();
 
         this.player = this.add.rectangle(0, 0, PLAYER_SIZE, PLAYER_SIZE, PLAYER_COLOR).setDepth(1);
@@ -1056,18 +1367,32 @@
         this.physics.add.overlap(this.player, this.springs, (player, spring) => this.bounce(spring));
         this.physics.add.overlap(this.player, this.orbs, (player, zone) => this.touchOrb(zone.orb));
         this.physics.add.overlap(this.player, this.checkpoints, (player, zone) => this.touchCheckpoint(zone.checkpoint));
+        this.physics.add.overlap(this.player, this.starZones, (player, zone) => this.touchStar(zone.star));
 
         this.roomText = this.add.text(12, 10, '', { fontSize: '18px', color: '#9aa4c0', fontFamily: 'sans-serif' }).setDepth(2);
         this.statsText = this.add.text(GAME_WIDTH - 12, 10, '', { fontSize: '18px', color: '#9aa4c0', fontFamily: 'sans-serif' })
           .setOrigin(1, 0).setDepth(2);
         this.endScreen = this.add.container(0, 0).setDepth(3).setVisible(false);
         this.endScreen.add(this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x11131c, 0.85).setOrigin(0));
-        this.endTitle = this.add.text(GAME_WIDTH / 2, 110, 'Chapter complete!', { fontSize: '40px', color: '#ffe14d', fontFamily: 'sans-serif' })
+        this.endTitle = this.add.text(GAME_WIDTH / 2, 70, 'Chapter complete!', { fontSize: '40px', color: '#ffe14d', fontFamily: 'sans-serif' })
           .setOrigin(0.5);
-        this.endBody = this.add.text(GAME_WIDTH / 2, 170, '', { fontSize: '22px', color: '#dddddd', fontFamily: 'sans-serif',
+        this.endBody = this.add.text(GAME_WIDTH / 2, 120, '', { fontSize: '22px', color: '#dddddd', fontFamily: 'sans-serif',
                                                                  align: 'center', lineSpacing: 8 }).setOrigin(0.5, 0);
-        this.endScreen.add([this.endTitle, this.endBody]);
-        for (const o of [this.roomText, this.statsText, this.endScreen]) o.setScrollFactor(0, 0, true);
+        this.endMap = this.add.container(0, 0);
+        this.endHint = this.add.text(GAME_WIDTH / 2, 440, 'Press Enter to play again', { fontSize: '18px', color: '#9aa4c0',
+                                                                                         fontFamily: 'sans-serif' }).setOrigin(0.5);
+        this.endScreen.add([this.endTitle, this.endBody, this.endMap, this.endHint]);
+        // Stars found / total, under the deaths and time (a drawn star, so no font needs the glyph)
+        this.starIcon = this.add.star(GAME_WIDTH - 12 - 7, 44, 5, 3.5, 8, STAR_COLOR).setStrokeStyle(1.5, 0x7a5a10).setDepth(2);
+        this.starText = this.add.text(GAME_WIDTH - 32, 34, '', { fontSize: '18px', color: '#9aa4c0', fontFamily: 'sans-serif' })
+          .setOrigin(1, 0).setDepth(2);
+        // The chapter map: shown in every rest spot, gone as soon as the player moves; never blocks input
+        this.mapOverlay = this.add.container(0, 0).setDepth(2.5).setVisible(false);
+        // In a chase, a band at the left screen edge while the storm is off screen behind the player
+        this.stormBand = this.add.rectangle(0, 0, 18, GAME_HEIGHT, STORM_EDGE, 0).setOrigin(0).setDepth(1.9).setVisible(false);
+        for (const o of [this.roomText, this.statsText, this.endScreen, this.starIcon, this.starText, this.mapOverlay, this.stormBand]) {
+          o.setScrollFactor(0, 0, true);
+        }
 
         this.keys = this.input.keyboard.addKeys('LEFT,RIGHT,UP,A,D,W,SPACE,ENTER');
         this.lastGrounded = -Infinity;
@@ -1091,7 +1416,11 @@
           state: () => ({ room: this.roomIndex, deaths: this.deaths, won: this.won }),
           stats: () => ({ time: this.playTime, deaths: this.deaths, sections: this.sectionStats.map(s => ({ ...s })),
                           bonus: this.bonusCleared.size, scrollX: this.cameras.main.scrollX, room: this.roomText.text,
-                          hud: this.statsText.text, endScreen: this.endScreen.visible ? this.endBody.text : null }),
+                          hud: this.statsText.text, endScreen: this.endScreen.visible ? this.endBody.text : null,
+                          stars: [...this.collected], starHud: this.starText.text, holding: !!this.heldStar,
+                          map: this.mapOverlay.visible ? this.mapOverlay.alpha : 0, mapInfo: this.mapInfo,
+                          endMap: this.endScreen.visible ? this.endMapInfo : null }),
+          chase: () => this.chase && { front: this.stormFront(), ahead: this.player.body.left - this.stormFront() },
           crumbles: () => this.crumbleBlocks.map(b => ({ state: b.state, solid: b.zone.body.enable })),
           orbs: () => this.orbList.map(o => ({ ready: o.ready })),
           checkpoint: () => this.checkpoint && { x: this.checkpoint.x, y: this.checkpoint.y },
@@ -1101,22 +1430,60 @@
 
         // Hook for the difficulty measurer (tools/measure-difficulty.mjs, from the platformer-levels skill)
         window.__levels = {
-          rooms: ROOMS.map(r => ({ id: r.name, area: r.area, beat: r.beat })),
+          rooms: ROOMS.map(r => ({ id: r.name, area: r.area, beat: r.beat, kind: r.kind })),
           goto: (i) => {
             this.time.removeAllEvents();
             for (const key of Object.values(this.keys)) key.reset();
+            // A fresh attempt: this room's star is back, even if an earlier attempt banked it
+            for (const key of [...this.collected]) if (key.startsWith(ROOMS[i].name + '@')) this.collected.delete(key);
             this.loadRoom(i);
             this.player.body.setVelocity(0, 0);
             this.hookRoom = i;
             this.hookDeaths = this.deaths;
+            this.exitedWithStar = false;  // set when the player leaves through an exit holding a star
           },
           state: () => {
             const b = this.player.body;
-            return { x: this.player.x, y: this.player.y, vx: b.velocity.x, vy: b.velocity.y,
-                     onGround: this.onGround(),
-                     dead: this.deaths !== this.hookDeaths, done: this.roomIndex !== this.hookRoom || this.won,
-                     room: this.roomIndex, finished: this.won };
+            // A side room with a star is only done when the player leaves through its exit holding the star
+            const room = ROOMS[this.hookRoom];
+            const needStar = room?.kind === 'optional' && room.grid.join('').includes('*');
+            const left = this.roomIndex !== this.hookRoom || this.won;
+            const st = { x: this.player.x, y: this.player.y, vx: b.velocity.x, vy: b.velocity.y,
+                         onGround: this.onGround(),
+                         dead: this.deaths !== this.hookDeaths, done: left && (!needStar || this.exitedWithStar),
+                         room: this.roomIndex, finished: this.won };
+            if (this.chase && this.roomIndex === this.hookRoom) {
+              st.ahead = b.left - this.stormFront();
+              st.hazardSpeed = this.roomTime > this.chase.delay ? this.chase.speed : 0;
+            }
+            return st;
           },
+        };
+
+        // Hook for the character-animation skill's anim-sheet.mjs (test only, never changes play)
+        const ANIM_STAGE = [...Array(12).fill('.'.repeat(25)), '...P.....................', '#'.repeat(25), '#'.repeat(25)];
+        window.__anim = {
+          stage: () => { this.loadRoom(-1, ANIM_STAGE); this.player.body.setVelocity(0, 0); },
+          hero: () => {                   // canvas px: x = centre, y = feet
+            const cam = this.cameras.main, h = this.pixel?.hero ?? this.fx.art;
+            const feet = this.pixel ? HERO_FEET * h.scaleY : PLAYER_SIZE / 2 * h.scaleY;
+            return { x: h.x - cam.scrollX + cam.x, y: h.y + feet - cam.scrollY + cam.y,
+                     state: this.pixel?.animState ?? null, frame: h.frame?.name ?? null, flip: !!h.flipX };
+          },
+          solo: (on) => {                 // only the hero and its loose parts, on #ff00ff
+            const cam = this.cameras.main;
+            if (on) {
+              const keep = new Set([this.pixel?.hero, this.pixel?.heroCloth].filter(Boolean));
+              this.animHidden = this.children.list.filter(o => o.visible && !keep.has(o));
+              this.animHidden.forEach(o => o.setVisible(false));
+              this.animBg = [cam.backgroundColor, cam.transparent];
+              cam.setBackgroundColor(0xff00ff);
+            } else {
+              this.animHidden.forEach(o => o.setVisible(true));
+              [cam.backgroundColor, cam.transparent] = this.animBg;
+            }
+          },
+          render: () => { const g = this.game; g.renderer.preRender(); g.scene.render(g.renderer); g.renderer.postRender(); },
         };
       }
 
@@ -1125,6 +1492,7 @@
         this.playTime = 0;  // s played in this run of the chapter
         this.deaths = 0;
         this.bonusCleared = new Set();  // optional rooms finished in this run
+        this.collected = new Set();     // stars banked in this run (by starKey)
         this.sectionStats = SECTIONS.map(s => ({ number: s.number, name: s.name, time: 0, deaths: 0 }));
         this.loadRoom(0);
       }
@@ -1145,8 +1513,14 @@
         this.crumbles.clear(true, true);
         this.orbs.clear(true, true);
         this.checkpoints.clear(true, true);
+        this.starZones.clear(true, true);
         this.roomArt.clear(true, true);
         this.endScreen.setVisible(false);
+        this.heldStar = null;          // a star picked up in this attempt, not banked yet
+        const room = i >= 0 ? ROOMS[i] : null;
+        this.chase = room?.chase || null;
+        this.stormBand.setVisible(false);
+        this.mapOverlay.setVisible(false);
         this.roomTime = 0;  // s since the room (re)started; drives crumbling blocks and orbs
         const width = grid[0].length * TILE;
         this.physics.world.setBounds(0, 0, width, GAME_HEIGHT);
@@ -1217,7 +1591,7 @@
               this.roomArt.add(this.add.image(x, y - TILE, 'art', 'flag').setOrigin(0));
             } else if (zone.isBonus && ART.on) {
               // The same signs as the plain version: a slow violet glow ("a side trip") and a crown of red spikes ("hard")
-              const inBonus = i >= 0 && ROOMS[i].beat === 'optional';
+              const inBonus = i >= 0 && ROOMS[i].kind === 'optional';
               if (!inBonus) {
                 const glow = this.pixel.glow(x + TILE / 2, y, 0xb48cf0, 70, 0.8).setDepth(-0.5);
                 this.roomArt.add(glow);
@@ -1231,7 +1605,7 @@
               this.roomArt.add(this.add.triangle(x + 8, y - TILE + 2, 0, 0, 22, 9, 0, 18, 0xffe14d).setOrigin(0));
             } else if (zone.isBonus) {
               // Purple door with a star: clearly not the way on
-              const inBonus = i >= 0 && ROOMS[i].beat === 'optional';
+              const inBonus = i >= 0 && ROOMS[i].kind === 'optional';
               if (!inBonus) {
                 // The way into a bonus room: a slow glow says "special, a side trip", and a crown of spikes in the
                 // game's danger red says "hard" (art only, they don't hurt)
@@ -1275,10 +1649,15 @@
             const orb = { zone, gem, ghost, baseY: cy, ready: true, until: 0 };
             zone.orb = orb;
             this.orbList.push(orb);
+          } else if (ch === '*') {
+            this.addStar(x + TILE / 2, y + TILE / 2, starKey(room ? room.name : 'test', c, r));
           } else if (ch === 'P') {
             this.spawn = { x: x + TILE / 2, y: y + TILE - PLAYER_SIZE / 2 };
           }
         }));
+        if (room?.kind === 'rest') this.campfire();
+        if (room?.vista) this.vista(room.vista);
+        if (this.chase) this.buildStorm();
 
         const start = this.checkpoint || this.spawn;
         this.player.setPosition(start.x, start.y).setFillStyle(PLAYER_COLOR);
@@ -1290,12 +1669,16 @@
         this.rising = false;
         this.sprung = false;
         this.airJumpsLeft = AIR_JUMPS;
-        this.cameras.main.startFollow(this.player, true);  // jumps straight to the player, then follows sideways
-        if (i >= 0 && ROOMS[i].beat === 'optional') {
+        // Jumps straight to the player, then follows sideways; in a chase it looks ahead, away from the storm
+        this.cameras.main.startFollow(this.player, true, 1, 1, this.chase ? -CHASE_LOOK_AHEAD : 0, 0);
+        if (i >= 0 && ROOMS[i].kind === 'optional') {
           this.roomText.setText(`Section ${ROOMS[i].section} · Area ${ROOMS[i].area} · Bonus room`);
+        } else if (i >= 0 && ROOMS[i].kind === 'rest') {
+          this.roomText.setText(`Section ${ROOMS[i].section} · ${SECTIONS[ROOMS[i].section - 1].name}`);
+          this.showMap(ROOMS[i].section);
         } else if (i >= 0) {
           const { section, area } = ROOMS[i];
-          const inArea = ROOMS.filter(r => r.area === area && r.beat !== 'optional');
+          const inArea = ROOMS.filter(r => r.area === area && r.kind !== 'optional' && r.kind !== 'rest');
           this.roomText.setText(`Section ${section} · Area ${area} · Room ${inArea.indexOf(ROOMS[i]) + 1} / ${inArea.length}`);
         } else {
           this.roomText.setText('Test room');
@@ -1303,6 +1686,221 @@
         this.pixel?.room(grid, i);
         this.fx.roomLoaded(atCheckpoint);
         this.sfx.roomLoaded(atCheckpoint);
+      }
+
+      // ---- Stars ----
+      // A star bobs in its cell. One already banked in this run is a faint outline that can't be taken again.
+      addStar(x, y, key) {
+        const have = this.collected.has(key);
+        const glow = !have && this.pixel ? this.pixel.glow(x, y, STAR_COLOR, 34, 0.55).setDepth(-0.5) : null;
+        const shape = this.add.star(x, y, 5, 6, 13, have ? 0 : STAR_COLOR, have ? 0 : 1).setStrokeStyle(2, have ? STAR_COLOR : 0xfff4c0)
+          .setAlpha(have ? 0.35 : 1).setDepth(0.9);
+        this.roomArt.add(shape);
+        if (glow) this.roomArt.add(glow);
+        this.tweens.add({ targets: [shape, glow].filter(Boolean), y: y - 4, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        if (!have) this.tweens.add({ targets: shape, angle: 360, duration: 6000, repeat: -1 });
+        if (have) return;
+        const zone = this.add.zone(x, y, 24, 24);
+        zone.star = { key, shape, glow, zone };
+        this.starZones.add(zone);
+      }
+
+      // Picked up: it rides above the player until they leave through the exit (then it counts) or die (then it's back)
+      touchStar(star) {
+        if (this.heldStar || this.dying || this.won) return;
+        this.heldStar = star;
+        star.zone.body.enable = false;
+        this.tweens.killTweensOf([star.shape, star.glow].filter(Boolean));
+        star.shape.setScale(0.75);
+        const ring = this.add.circle(star.shape.x, star.shape.y, 10).setStrokeStyle(3, STAR_COLOR);
+        this.roomArt.add(ring);
+        this.tweens.add({ targets: ring, scale: 3, alpha: 0, duration: 300, onComplete: () => ring.destroy() });
+        this.sfx.star();
+      }
+
+      updateHeldStar() {
+        const st = this.heldStar;
+        if (!st) return;
+        const x = this.player.x, y = this.player.y - 30 + Math.sin(this.roomTime * 5) * 2;
+        st.shape.setPosition(x, y).setVisible(this.player.body.enable);
+        st.glow?.setPosition(x, y).setVisible(this.player.body.enable);
+      }
+
+      updateStarText() {
+        const text = `${this.collected.size} / ${STARS.length}`;
+        if (this.starText.text !== text) this.starText.setText(text);
+        const show = STARS.length > 0;
+        this.starText.setVisible(show);
+        this.starIcon.setVisible(show);
+      }
+
+      // ---- Rest spots ----
+      // A campfire a few steps right of the start: warm light, a flickering flame, the place to catch a breath
+      campfire() {
+        const x = this.spawn.x + 3 * TILE, foot = this.spawn.y + PLAYER_SIZE / 2;
+        const add = (o) => { this.roomArt.add(o); return o; };
+        add(this.add.rectangle(x - 9, foot - 3, 22, 6, 0x5a3a24).setAngle(-14).setDepth(-0.4));
+        add(this.add.rectangle(x + 9, foot - 3, 22, 6, 0x6e4a2c).setAngle(14).setDepth(-0.4));
+        const flame = add(ART.on ? this.add.image(x, foot - 4, 'art', 'flame0').setOrigin(0.5, 1).setScale(2).setDepth(-0.3)
+                                 : this.add.triangle(x, foot - 4, 0, 22, 9, 0, 18, 22, 0xff9a3a).setOrigin(0.5, 1).setDepth(-0.3));
+        this.tweens.add({ targets: flame, scaleY: flame.scaleY * 0.8, scaleX: flame.scaleX * 1.1, duration: 180, yoyo: true, repeat: -1 });
+        if (this.pixel) {
+          const g = add(this.pixel.glow(x, foot - 18, 0xff9a3a, 90, 0.5).setDepth(-0.5));
+          this.tweens.add({ targets: g, alpha: 0.35, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        }
+      }
+
+      // What lies ahead, far off and out of reach: a small floating island in the sky with the next section's element
+      // on it, or the storm gathering on the horizon. Background only (no bodies), dimmed so it can't pass for a ledge.
+      vista(kind) {
+        const add = (o) => { this.roomArt.add(o.setDepth(-6)); return o; };
+        if (kind === 'storm') {
+          for (let k = 0; k < 7; k++) {
+            add(this.add.ellipse(20 + k * 22, 70 + k * 34, 230 - k * 14, 120, STORM_COLOR, 0.85));
+          }
+          const bolt = add(this.add.polygon(150, 120, [0, 0, 14, 0, 6, 26, 18, 26, -4, 66, 2, 34, -10, 34], STORM_EDGE).setAlpha(0));
+          this.tweens.add({ targets: bolt, alpha: { from: 0, to: 0.9 }, duration: 90, yoyo: true, repeat: -1, repeatDelay: 2300 });
+          return;
+        }
+        // Small, hazy and blue-grey, so it reads as far away and not as a ledge to jump to
+        const cx = 610, cy = 130, k = 0.6, haze = 0x7f88b0;
+        add(this.add.ellipse(cx, cy + 9, 96, 22, 0x1c2240, 1));
+        add(this.add.rectangle(cx, cy + 1, 88, 6, 0x2a3352, 1));
+        const items = { spring: ['spring'], crumble: ['crumble', 'crumble', 'crumble'], orb: ['orb'], mix: ['crumble', 'orb', 'spring'] }[kind] || [];
+        items.forEach((it, n) => {
+          const x = cx + (n - (items.length - 1) / 2) * 34 * k, y = cy - 2;
+          let o;
+          if (it === 'spring') {
+            o = ART.on ? this.add.image(x, y, 'art', 'spring_pad').setOrigin(0.5, 1) : this.add.rectangle(x, y, 26, 7, 0x5fd36b).setOrigin(0.5, 1);
+          } else if (it === 'crumble') {
+            o = ART.on ? this.add.image(x, y, 'art', 'crumble' + (n % 2)).setOrigin(0.5, 1)
+                       : this.add.rectangle(x, y, 30, 30, CRUMBLE_COLOR).setOrigin(0.5, 1);
+          } else {
+            o = ART.on ? this.add.image(x, y - 26, 'art', 'orb') : this.add.rectangle(x, y - 26, 15, 15, ORB_COLOR).setAngle(45);
+            this.tweens.add({ targets: o, y: y - 30, duration: 1000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+            if (this.pixel) add(this.pixel.glow(x, y - 26, 0x74ece0, 18, 0.3));
+          }
+          add(o.setScale(k).setAlpha(0.7));
+          if (o.setTint) o.setTint(haze); else o.setFillStyle(haze);
+        });
+      }
+
+      // ---- The chapter map ----
+      // Sections as stops on a path, left to right: finished ones lit with their stars found, the current one marked,
+      // later ones dim, the storm at the end. Fills `box` (a container); returns what it shows, for tests.
+      drawMap(box, current, y, detail = false) {
+        box.removeAll(true);
+        const n = SECTIONS.length, left = 150, right = GAME_WIDTH - 150;
+        const xOf = k => n > 1 ? left + (right - left) * k / (n - 1) : GAME_WIDTH / 2;
+        const font = (size, color) => ({ fontSize: size + 'px', color, fontFamily: 'sans-serif', align: 'center' });
+        const info = [];
+        for (let k = 0; k < n - 1; k++) {
+          box.add(this.add.rectangle(xOf(k), y, xOf(k + 1) - xOf(k), 4, k + 1 < current ? 0xffd34d : 0x3a4060).setOrigin(0, 0.5));
+        }
+        SECTIONS.forEach((sec, k) => {
+          const x = xOf(k), num = sec.number;
+          const state = num < current ? 'done' : num === current ? 'here' : 'later';
+          const finale = sec.rooms.some(r => r.kind === 'chase');
+          const color = state === 'done' ? 0xffd34d : state === 'here' ? 0xf2b134 : 0x3a4060;
+          if (finale) {
+            box.add(this.add.ellipse(x - 7, y - 3, 22, 16, color));
+            box.add(this.add.ellipse(x + 7, y - 5, 24, 20, color));
+            box.add(this.add.polygon(x + 1, y + 13, [0, 0, 8, 0, 3, 9, 10, 9, -3, 24, 1, 13, -5, 13],
+                                     state === 'later' ? 0x6b7390 : STORM_EDGE));
+          } else {
+            box.add(this.add.circle(x, y, 10, color).setStrokeStyle(2, state === 'later' ? 0x6b7390 : 0xfff4c0));
+          }
+          if (state === 'here' && !detail) {
+            const ring = this.add.circle(x, y, 15).setStrokeStyle(3, 0xf2b134);
+            box.add(ring);
+            this.tweens.add({ targets: ring, scale: 1.35, alpha: 0.2, duration: 700, yoyo: true, repeat: -1 });
+          }
+          const total = STARS.filter(st => st.section === num).length;
+          const found = STARS.filter(st => st.section === num && this.collected.has(st.key)).length;
+          const lines = [sec.name];
+          if (state === 'done' && total) lines.push(`${found} / ${total} ${total === 1 ? 'star' : 'stars'}`);
+          if (state === 'here' && !detail) lines.push('you are here');
+          if (detail) {
+            const stat = this.sectionStats[k];
+            lines.push(`${formatTime(stat.time, true)} · ${stat.deaths} ${stat.deaths === 1 ? 'death' : 'deaths'}`);
+          }
+          box.add(this.add.text(x, y + 22, lines.join('\n'), font(13, state === 'later' ? '#6b7390' : '#dfe3f0'))
+            .setOrigin(0.5, 0).setLineSpacing(2));
+          info.push({ section: num, state, finale, found, total });
+        });
+        return info;
+      }
+
+      // Shown whenever a rest spot loads; fades out once the player moves, or after MAP_TIME s
+      showMap(section) {
+        const box = this.mapOverlay;
+        box.removeAll(true);
+        box.add(this.add.rectangle(GAME_WIDTH / 2, 120, 620, 150, 0x05071a, 0.82).setStrokeStyle(2, 0x34405e));
+        box.add(this.add.text(GAME_WIDTH / 2, 56, `Section ${section} · ${SECTIONS[section - 1].name}`,
+                              { fontSize: '20px', color: '#ffe14d', fontFamily: 'sans-serif' }).setOrigin(0.5, 0));
+        const inner = this.add.container(0, 0);
+        box.add(inner);
+        this.mapInfo = this.drawMap(inner, section, 112);
+        box.setVisible(true).setAlpha(1);
+        this.mapAge = 0;
+        this.mapFading = false;
+      }
+
+      updateMap(dt, moving) {
+        const box = this.mapOverlay;
+        if (!box.visible) return;
+        this.mapAge += dt;
+        if (moving || this.mapAge > MAP_TIME) this.mapFading = true;
+        if (this.mapFading) {
+          box.alpha = Math.max(0, box.alpha - dt / 0.4);
+          if (box.alpha <= 0) box.setVisible(false);
+        }
+      }
+
+      // ---- The storm (chase rooms) ----
+      // Its front moves on a fixed schedule from the room's (re)start: the same on every attempt
+      stormFront() {
+        const c = this.chase;
+        return c.from + c.speed * Math.max(0, this.roomTime - c.delay);
+      }
+
+      buildStorm() {
+        const add = (o) => { this.roomArt.add(o); return o; };
+        this.storm = {
+          wall: add(this.add.rectangle(0, 0, 2400, GAME_HEIGHT, STORM_COLOR, 0.93).setOrigin(1, 0).setDepth(1.4)),
+          haze: add(this.add.rectangle(0, 0, 40, GAME_HEIGHT, 0x8a5cf0, 0.35).setOrigin(0, 0).setDepth(1.39)),
+          edge: add(this.add.rectangle(0, 0, 5, GAME_HEIGHT, STORM_EDGE, 1).setOrigin(1, 0).setDepth(1.41)),
+          sparks: [...Array(14)].map(() => add(this.add.rectangle(0, Math.random() * GAME_HEIGHT, 4, 4, STORM_EDGE, 0.9).setDepth(1.42))
+            .setData('v', 40 + Math.random() * 80)),
+        };
+        this.stormMoving = false;
+      }
+
+      // Kill on touch, then draw: the wall up to the front, a bright flickering edge, sparks flying off it, and a band
+      // at the screen edge while it's out of view
+      updateStorm(dt) {
+        if (!this.chase) return;
+        const front = this.stormFront();
+        const body = this.player.body;
+        if (body.enable && !this.dying && !this.won && body.left < front) this.die();
+        const moving = this.roomTime > this.chase.delay;
+        if (moving && !this.stormMoving) this.sfx.stormMoves();
+        this.stormMoving = moving;
+        const st = this.storm, warn = !moving;
+        st.wall.x = front;
+        st.haze.x = front;
+        st.edge.x = front;
+        st.edge.alpha = warn ? 0.5 + 0.5 * Math.abs(Math.sin(this.roomTime * 14)) : 0.75 + 0.25 * Math.sin(this.roomTime * 30);
+        st.haze.alpha = (warn ? 0.4 : 0.25) + 0.15 * Math.sin(this.roomTime * (warn ? 10 : 6));
+        for (const sp of st.sparks) {
+          sp.x = (sp.x > front && sp.x < front + 60) ? sp.x + sp.getData('v') * dt : front - Math.random() * 6;
+          sp.y -= 20 * dt;
+          if (sp.y < 0) sp.y += GAME_HEIGHT;
+        }
+        const cam = this.cameras.main;
+        const off = cam.scrollX - front;  // > 0: the front is left of the view
+        this.stormBand.setVisible(off > 0);
+        if (off > 0) this.stormBand.alpha = (0.25 + 0.5 * clamp01(1 - off / 500)) * (0.8 + 0.2 * Math.sin(this.roomTime * 12));
       }
 
       // Crumbling block: standing on it starts the shake (touching its side or underside doesn't, and neither does
@@ -1399,6 +1997,7 @@
         this.tweens.add({ targets: spring.pad, scaleY: 0.35, duration: 60, yoyo: true });
         this.fx.bounce(spring);
         this.sfx.bounce();
+        this.pixel?.bounced();
       }
 
       die() {
@@ -1421,12 +2020,17 @@
         // rooms. Optional room: its D clears it and goes on to the main room after the one it branched from (so the
         // player doesn't replay that room); its B leaves without clearing, back to the start of the branch room.
         let next = this.roomIndex + 1;
-        const optional = ROOMS[this.roomIndex]?.beat === 'optional';
+        const optional = ROOMS[this.roomIndex]?.kind === 'optional';
         if (optional && exit.isBonus) {
           next = this.roomIndex - 1;
         } else if (!exit.isBonus) {
           if (optional) this.bonusCleared.add(this.roomIndex);
-          while (ROOMS[next]?.beat === 'optional') next++;
+          while (ROOMS[next]?.kind === 'optional') next++;
+        }
+        // A star held through the exit (not a bonus door back) counts
+        if (this.heldStar && !exit.isBonus) {
+          this.collected.add(this.heldStar.key);
+          this.exitedWithStar = true;
         }
         // A test room's flag ends the chapter, and so does clearing a bonus room that branches off the last room
         const lastRoom = this.roomIndex < 0 || next >= ROOMS.length;
@@ -1446,18 +2050,17 @@
         this.time.delayedCall(0, () => this.loadRoom(next));
       }
 
+      // Time, deaths and stars, then the chapter map with every section lit and its own time and deaths
       showEndScreen() {
         const lines = [`Time  ${formatTime(this.playTime)}`, `Deaths  ${this.deaths}`];
-        const bonus = ROOMS.filter(r => r.beat === 'optional').length;
-        if (bonus) lines.push(`Bonus rooms  ${this.bonusCleared.size} / ${bonus}`);
-        if (this.sectionStats.length > 1) {
-          lines.push('');
-          for (const s of this.sectionStats) lines.push(`${s.number}. ${s.name}   ${formatTime(s.time)}   ${s.deaths} deaths`);
-        }
-        lines.push('', 'Press Enter to play again');
+        // Every side room holds one star, so the stars also count the side rooms finished
+        if (STARS.length) lines.push(`Stars  ${this.collected.size} / ${STARS.length}`);
         this.endBody.setText(lines.join('\n'));
+        this.endMapInfo = this.drawMap(this.endMap, SECTIONS.length + 1, 330, true);
         this.endScreen.setVisible(true);
+        this.mapOverlay.setVisible(false);
         this.updateStatsText();
+        this.updateStarText();
       }
 
       updateStatsText() {
@@ -1481,8 +2084,12 @@
           if (section) section.time += dt;
         }
         this.updateStatsText();
+        this.updateStarText();
         this.updateCrumbles();
         this.updateOrbs();
+        this.updateStorm(dt);
+        this.updateHeldStar();
+        this.updateMap(dt, left || right || jumpHeld);
 
         body.setAccelerationX(left === right ? 0 : (left ? -RUN_ACCEL : RUN_ACCEL));
 
@@ -1502,6 +2109,7 @@
           this.lastGrounded = -Infinity;
           this.fx.jump();
           this.sfx.jump();
+          this.pixel?.jumped();
         } else if (jumpQueued && this.airJumpsLeft > 0 && this.timeToLand() > this.jumpBuffer
                    && !(this.sprung && body.velocity.y < -AIR_JUMP_VELOCITY)) {
           // Air jump: replaces any fall speed so it always gives a real boost.
@@ -1511,6 +2119,7 @@
           this.airJumpsLeft--;
           this.fx.airJump();
           this.sfx.airJump();
+          this.pixel?.airJumped();
         }
 
         // Variable jump height: releasing early cuts the rise

@@ -1,11 +1,31 @@
 // Section 3: the refill orb (area 4), mixed with the double jump, the spring and the crumbling block.
+// Opens at a lantern rest (rest spot); a long run of orbs; a calm pool halfway with a side room and its star.
 // Tile legend and section rules: levels/README.md and the comment above loadSections() in index.html.
 (window.SECTIONS = window.SECTIONS || []).push({
   number: 3,
   name: 'Refill orbs',
   rooms: [
     // ---- Area 4: the refill orb ----
-    { // 20. Jump and double jump up the tall wall into the orb, then jump again onto the ledge. The floor is flat and safe.
+    { // Rest spot: lanterns on a quiet ledge. Far off, an orb glows over a floating island.
+      name: 'Lantern rest', area: 4, kind: 'rest', beat: 'rest', vista: 'orb',
+      grid: [
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.P.......................',
+        '#########.............D..',
+        '#########################',
+        '#########################',
+      ] },
+    { // Jump and double jump up the tall wall into the orb, then jump again onto the ledge. The floor is flat and safe.
       name: 'First orb', area: 4, beat: 'introduce',
       grid: [
         '.........................',
@@ -24,7 +44,7 @@
         '#########################',
         '#########################',
       ] },
-    { // 21. Jump and double jump over the wide spike pit, fall into the orb and jump again onto the far ledge.
+    { // Jump and double jump over the wide spike pit, fall into the orb and jump again onto the far ledge.
       name: 'Orb bridge', area: 4, beat: 'develop',
       grid: [
         '.........................',
@@ -43,8 +63,28 @@
         '#####...............#####',
         '#####^^^^^^^^^^^^^^^#####',
       ] },
-    { // 22. Fall into each low orb and jump out of it again: two orbs carry you over the long spike pit.
+    { // Long run (two screens), a rising staircase: jump and double jump over the pit, fall into the orb and jump out
+      // of it onto a wide ledge, take a breath, then the same again up to a higher ledge and the door.
       name: 'Orb steps', area: 4, beat: 'develop',
+      grid: [
+        '................................................',
+        '................................................',
+        '................................................',
+        '................................................',
+        '....................................O...........',
+        '.............................................D..',
+        '...........................................#####',
+        '.............O.............................#####',
+        '...........................................#####',
+        '....................########...............#####',
+        '....................########...............#####',
+        '.P..................########...............#####',
+        '#####...............########...............#####',
+        '#####...............########...............#####',
+        '#####^^^^^^^^^^^^^^^########^^^^^^^^^^^^^^^#####',
+      ] },
+    { // Calm: a still pool under the ruins, a walk with one low step. A bonus door glows on a step behind the start.
+      name: 'Still pool', area: 4, beat: 'rest',
       grid: [
         '.........................',
         '.........................',
@@ -54,15 +94,35 @@
         '.........................',
         '.........................',
         '.........................',
-        '.......................D.',
-        '.............O.....O.####',
-        '.....................####',
-        '.P...................####',
-        '####.................####',
-        '####.................####',
-        '####^^^^^^^^^^^^^^^^^####',
+        '.........................',
+        '.........................',
+        'B........................',
+        '#.P......................',
+        '##########.........D.....',
+        '#########################',
+        '#########################',
       ] },
-    { // 23. The spring throws you high and gives the double jump back; spend it, catch the orb and jump again to the far ledge.
+    { // Side room behind Still pool's bonus door: an orb ladder up a shaft over spikes; jump out of each orb the moment
+      // you touch it to climb to the next. The star floats past the last orb, just before the door's ledge.
+      name: 'Orb ladder', area: 4, kind: 'optional', beat: 'optional',
+      grid: [
+        '.........................',
+        '......................*..',
+        '.........................',
+        '....................O..D.',
+        '......................###',
+        '................O.....###',
+        '......................###',
+        '............O.........###',
+        '......................###',
+        '......................###',
+        '......................###',
+        'B.P...................###',
+        '####..................###',
+        '####..................###',
+        '####^^^^^^^^^^^^^^^^^^###',
+      ] },
+    { // The spring throws you high and gives the double jump back; spend it, catch the orb and jump again to the far ledge.
       name: 'Spring and orb', area: 4, beat: 'twist',
       grid: [
         '.........................',
@@ -81,7 +141,7 @@
         '######.................##',
         '######^^^^^^^^^^^^^^^^^##',
       ] },
-    { // 24. Hop onto the cracked stone and leave at once: jump, double jump, catch the orb high up and jump again to the door ledge.
+    { // Hop onto the cracked stone and leave at once: jump, double jump, catch the orb high up and jump again to the door ledge.
       name: 'Cracked stone and orb', area: 4, beat: 'twist',
       grid: [
         '.........................',
@@ -100,7 +160,7 @@
         '####..................###',
         '####^^^^^^^^^^^^^^^^^^###',
       ] },
-    { // 25. Area test: run off the cracked runway, jump and double jump into the orb, jump again up onto the high cracked ledge and hop off it at once to the door.
+    { // Area test: run off the cracked runway, jump and double jump into the orb, jump again up onto the high cracked ledge and hop off it at once to the door.
       name: 'Orb test', area: 4, beat: 'test',
       grid: [
         '.........................',
@@ -119,7 +179,7 @@
         '###....................##',
         '###^^^^^^^^^^^^^^^^^^^^##',
       ] },
-    { // 26. A calm walk to the flag; the orbs over the floor are only there to play with.
+    { // A calm walk to the flag; the orbs over the floor are only there to play with.
       name: 'Glow walk', area: 4, beat: 'rest',
       grid: [
         '.........................',

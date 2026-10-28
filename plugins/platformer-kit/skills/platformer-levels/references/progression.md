@@ -38,6 +38,9 @@ The player improves, so a room that is hard in area 1 is easy by area 3. Difficu
 - Develop and twist rooms: 60–90%.
 - Test rooms: 40–70%, never below 30%.
 - After a test room, the next room is easier.
+- Rest spots (`kind: 'rest'`, the room that opens each section, see [structure.md](structure.md)): 100% for every player, the new player included. No hazards and no pits: anything less and it isn't a rest. Rest spots don't count as rooms played, since they teach nothing.
+- Chase segments (`kind: 'chase'`, see [finale.md](finale.md)): 60–90% for the player who has reached them, skilled 95%+, and the clean route's margin (seconds ahead of the hazard) between 0.6 and 2.5 s on the main path: about 1.5–2.5 s for the first segment, 1.0–1.5 s for the middle ones, 0.6–1.0 s for the last.
+- No more than 3 hard rooms in a row (develop, twist, test or chase) without an easier one.
 - Skilled players should pass everything at 95% or more, except optional hard rooms.
 
 **Report** the curve: quote the script's table (one line per room with its beat, the pass rates for all three players and for the player who has reached it, the target and the verdict) and point the user to its `report.html`. Fix rooms outside their target by changing gaps, heights, hazards or rests, not the movement numbers, then measure again.
@@ -48,4 +51,4 @@ The simulated player covers how precisely a player times inputs, how late they r
 
 ## 4. Hard content for skilled players
 
-Keep the main path fair. Put the real hard rooms off the main path (an optional side room or a bonus at the end of an area), so skilled players have something to chase and new players aren't blocked.
+Keep the main path fair. Put the real hard rooms off the main path (an optional side room or a bonus at the end of an area), so skilled players have something to chase and new players aren't blocked. Give each one a collectible that is counted but never required ([structure.md](structure.md)).

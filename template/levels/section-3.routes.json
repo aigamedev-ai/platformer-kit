@@ -1,4 +1,9 @@
 {
+ "Lantern rest": [
+  {
+   "press": "right"
+  }
+ ],
  "First orb": [
   {
    "press": "right"
@@ -67,7 +72,71 @@
   {
    "press": "jump",
    "when": {
-    "x>=": 118
+    "x>=": 170
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 443
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 906
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1179
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Still pool": [
+  {
+   "press": "right"
+  }
+ ],
+ "Orb ladder": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 110
    }
   },
   {
@@ -80,7 +149,7 @@
   {
    "release": "jump",
    "when": {
-    "x>=": 432
+    "x>=": 400
    }
   },
   {
@@ -89,11 +158,26 @@
   {
    "release": "jump",
    "when": {
-    "x>=": 600
+    "x>=": 528
    }
   },
   {
    "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": {
+    "x>=": 656
+   }
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 735
+   }
   },
   {
    "release": "jump",

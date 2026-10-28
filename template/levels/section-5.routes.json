@@ -1,0 +1,232 @@
+{
+ "Watchtower": [
+  {
+   "press": "right"
+  }
+ ],
+ "Storm 1": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 240
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 464
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 590
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "release": "right"
+  },
+  {
+   "press": "left"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "release": "left"
+  },
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 945
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1235
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Storm 2": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 720
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "release": "right"
+  },
+  {
+   "press": "left"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "release": "left"
+  },
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1300
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Storm 3": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 180
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 844
+   }
+  },
+  {
+   "release": "jump",
+   "when": {
+    "x>=": 1054
+   }
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": {
+    "x>=": 1224
+   }
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "when": "land"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Sunrise": [
+  {
+   "press": "right"
+  }
+ ]
+}

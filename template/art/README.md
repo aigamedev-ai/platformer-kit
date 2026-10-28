@@ -20,3 +20,12 @@ game. The tools below need Python 3 and the pixel-art skill's `pixel.py`, which 
 - `edge-terrain.js`: the skill's edge-band terrain renderer (preset N), one picture per room behind the hidden collision.
 
 `node tools/shot.mjs OUT 1,5,34` screenshots rooms; `node tools/contact.mjs DIR OUT.png` makes a contact sheet.
+
+## Hero animation
+
+`hero2_*` frames in `sheet.js` (from `tools/sprites.py`, `FRAMES2`) are Wick's animated poses: idle breath, blink, look
+up, glance back, lantern lift, a 6-drawing run, turn, brake, crouch (take-off and landing), landing recovery, rise,
+apex, fall, fast fall and the air-jump tuck, each also in the spent (cold) palette. They have no scarf tail or hood tip:
+the game hangs those on chains (`secondary-motion.js`, from the character-animation skill) from the anchor points in
+`hero-anim.js`, which `tools/sprites.py` writes too. Settings live in `ANIM` in `index.html`; `?anim=0` brings back the
+earlier `hero_*` frames.

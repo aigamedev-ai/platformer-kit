@@ -4,8 +4,8 @@ Claude Code skills, tools and a starter game for making a platformer with AI. It
 
 | Folder | What's in it |
 |---|---|
-| [plugins/platformer-kit](plugins/platformer-kit) | The Claude Code plugin: five skills (`platformer-feel`, `platformer-levels`, `game-juice`, `game-sound`, `pixel-art`) |
-| [template](template) | The finished game, Wick: Night Ruins. 36 rooms in four sections, with juice, sound, pixel art and tests |
+| [plugins/platformer-kit](plugins/platformer-kit) | The Claude Code plugin: seven skills (`platformer-feel`, `platformer-levels`, `game-juice`, `game-sound`, `game-music`, `pixel-art`, `character-animation`) |
+| [template](template) | The finished game, Wick: Night Ruins. 53 rooms in five sections with rest spots, side rooms and a storm chase, plus animation, music, juice, sound, pixel art and tests |
 | [template-stages](template-stages) | The game as it was at the start of each part of the series |
 | [examples](examples) | One folder per post: the prompt, where to start and what we got |
 | [tools](tools) | The measuring script and the terrain renderer as command-line tools |
@@ -38,14 +38,14 @@ git clone https://github.com/aigamedev-ai/platformer-kit
 cd platformer-kit/template
 ```
 
-Open `index.html` in a browser, or run `npm start` and go to http://localhost:8080. Arrow keys or A/D to move, Up, W or Space to jump, and again in mid-air to double jump.
+Open `index.html` in a browser, or run `npm start` and go to http://localhost:8080. Arrow keys or A/D to move, Up, W or Space to jump, and again in mid-air to double jump. M mutes all sound, N turns the music off and J switches the effects.
 
 To check it the way the sessions did:
 
 ```sh
 npm install
 npx playwright install chromium
-npm run check          # 36 of 36 routes pass
+npm run check          # 53 of 53 routes pass
 npm run playthrough    # plays the whole chapter through to the end
 npm test
 ```
@@ -55,7 +55,7 @@ The backgrounds are already in the game, so you don't need an image model. [temp
 ## Replay a post
 
 1. Pick a part in [examples](examples) and copy its starting folder out of the repo, for example `cp -r template-stages/part-08-start ~/pk-part-08`.
-2. For parts 6 to 11, run `npm install && npx playwright install chromium` in the copy.
+2. For parts 6 to 14, run `npm install && npx playwright install chromium` in the copy.
 3. Start Claude Code there and send the prompt from the example's README.
 
 Each example lists what the recorded session produced, with the post's key numbers. Your run will differ in the details. The examples README also shows how to record a clean session, with no personal settings, plugins or MCP servers.
@@ -83,6 +83,7 @@ After cloning, `node tools/bin/measure-difficulty.mjs` and `node tools/bin/terra
 - Claude Code, for the skills.
 - Node 18 or newer, and Playwright with Chromium (`npx playwright install chromium`) for the tests, the measuring script and the terrain renderer.
 - Python 3 for the pixel-art scripts. Pillow is used if it's installed but isn't needed.
+- ffmpeg for the character-animation clips and the game-music MP3 previews.
 - Optional: a local [ComfyUI](https://github.com/comfyanonymous/ComfyUI) with FLUX.2-klein, if you want the pixel-art skill to make new backgrounds. Without it, the skill draws backgrounds in code.
 
 ## Licence

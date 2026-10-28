@@ -115,6 +115,121 @@ def hero_entries():
     return out
 
 
+# ---------------------------------------------------------------- animated hero (hero2_*): poses for every state
+# The scarf tail and the hood tip are not drawn here: the game hangs them on chains (secondary motion) from the
+# anchor points written to art/hero-anim.js, so they trail, flop and settle. Legs are 1 px strokes, outlined in code.
+HOOD2 = [           # 11x10, the hood without its tip
+    "...........",
+    "...oooooo..",
+    "..oWWWWWWo.",
+    ".oWWWWWWWWo",
+    ".oWWWWWWWWo",
+    ".oWWkkkkkWo",
+    ".owkkkkkkko",
+    ".owkkkkkkko",
+    "..owwkkkwo.",
+    "...ooooo...",
+]
+EYES2 = {'open': [(6, 5), (6, 8)], 'blink': None, 'up': [(5, 6), (5, 9)], 'back': [(6, 4), (6, 7)]}
+
+def hood2(look):
+    rows = [list(r) for r in HOOD2]
+    if look == 'blink':
+        for y, x in EYES2['open']: rows[y][x] = 'K'
+    else:
+        for y, x in EYES2[look]: rows[y][x] = 'e'
+    return [''.join(r) for r in rows]
+
+CLOAK2 = dict(CLOAK, **{
+    'squat': ["oyrrrrrRo.", "oyrRrrRRRo", "oWWWWWWwwo", "oWWWWWwwwo", "oWWWWwwwwo", "owwwwwwwwo"],
+    'leanT': [".oyrrrrrRo", "oyrRrrRRRo", "oWWWWWWwwo", "oWWWWWWwwo", "oWWWWWwwwo", "owWWWwwwo.", "owwwwwoo.."],
+    'tall':  ["oyrrrrrRo.", "oyrRrrRRRo", "oWWWWWWwwo", "oWWWWWWwwo", ".oWWWWwwo.", ".oWWWwwwo.", "..owwwwo.."],
+})
+# legs: (first row, rows 16 wide); n/N near leg/boot, f/F far leg/boot
+LEGS2 = {
+    'stand':  (15, ["......f...n.....", "......f...n.....", "......FF..NN...."]),
+    'crouch': (16, [".....f.....n....", "....FF.....NN..."]),
+    'land1':  (16, ["......f....n....", ".....FF....NN..."]),
+    'runC':   (16, ["....f......n....", "...FF.......NN.."]),
+    'runD':   (16, ["...Ff...........", "..........NN...."]),
+    'runP':   (15, [".......f..n.....", "......Ff..n.....", "..........NN...."]),
+    'turn':   (16, ["..ff.......n....", ".FF.......NN...."]),
+    'brake':  (15, [".....f....n.....", ".....f.....n....", ".....FF.....NN.."]),
+    'rise':   (14, ["......f..n......", "......f..n......", "......F..N......"]),
+    'tuck':   (15, [".....fF..nN....."]),
+    'dangle': (15, [".....f.....n....", ".....f......n...", ".....F......N..."]),
+    'drop':   (15, ["......f...n.....", "......f...n.....", "......F...N....."]),
+    'ball':   (16, [".....FF..NN....."]),
+}
+LEG_COL = {'n': 'tan2', 'N': 'tan1', 'f': 'tan1', 'F': 'tan0'}
+SWAP = str.maketrans('nNfF', 'fFnN')
+
+# name: hood (x, y), eyes, cloak, cloak (x, y), legs, swap legs, lantern (x, y)
+FRAMES2 = {
+    'idle0':  ((3, 0), 'open',  'stand', (3, 8),  'stand',  False, (12, 11)),
+    'idle1':  ((3, 1), 'open',  'stand', (3, 9),  'stand',  False, (12, 12)),
+    'blink':  ((3, 0), 'blink', 'stand', (3, 8),  'stand',  False, (12, 11)),
+    'look':   ((3, 0), 'up',    'stand', (3, 8),  'stand',  False, (12, 11)),
+    'back':   ((3, 0), 'back',  'stand', (3, 8),  'stand',  False, (12, 11)),
+    'peer':   ((3, 0), 'open',  'stand', (3, 8),  'stand',  False, (13, 6)),
+    'run0':   ((4, 1), 'open',  'lean',  (3, 9),  'runC',   False, (12, 11)),
+    'run1':   ((4, 2), 'open',  'leanT',  (3, 10), 'runD',   False, (11, 12)),
+    'run2':   ((4, 0), 'open',  'lean',  (3, 8),  'runP',   False, (11, 11)),
+    'run3':   ((4, 1), 'open',  'lean',  (3, 9),  'runC',   True,  (11, 12)),
+    'run4':   ((4, 2), 'open',  'leanT',  (3, 10), 'runD',   True,  (12, 12)),
+    'run5':   ((4, 0), 'open',  'lean',  (3, 8),  'runP',   True,  (12, 10)),
+    'turn':   ((4, 1), 'open',  'lean',  (3, 9),  'turn',   False, (12, 11)),
+    'brake':  ((2, 1), 'open',  'stand', (2, 9),  'brake',  False, (12, 11)),
+    'crouch': ((3, 2), 'open',  'squat', (3, 10), 'crouch', False, (12, 12)),
+    'land1':  ((3, 1), 'open',  'stand', (3, 9),  'land1',  False, (12, 12)),
+    'rise':   ((3, -1), 'open', 'tall',  (3, 7),  'rise',   False, (12, 11)),
+    'apex':   ((3, 0), 'open',  'puff',  (3, 8),  'tuck',   False, (12, 9)),
+    'fall':   ((3, 0), 'open',  'puff',  (3, 8),  'dangle', False, (12, 8)),
+    'drop':   ((3, 0), 'up',    'puff',  (3, 8),  'drop',   False, (13, 6)),
+    'spin':   ((3, 1), 'blink', 'puff',  (3, 9),  'ball',   False, (12, 10)),
+}
+
+def hero2(name, spent=False):
+    (hx, hy), look, cloak, (cx, cy), legs, swap, (lx, ly) = FRAMES2[name]
+    leg = dict(L, **(SPENT if spent else {}))
+    s = Sprite(16, 18, pal)
+    y0, rows = LEGS2[legs]
+    if swap: rows = [r.translate(SWAP) for r in rows]
+    s.stamp(rows, LEG_COL, 0, y0)
+    cells = {(x, y0 + y) for y, r in enumerate(rows) for x, ch in enumerate(r) if ch != '.'}
+    for x, y in cells:                                   # ink around each leg, not below the feet line
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y - 1), (x, y + 1)):
+            if (nx, ny) not in cells and ny <= 17: s.px(nx, ny, 'ink')
+    s.stamp(hood2(look), leg, hx, hy)
+    s.stamp(CLOAK2[cloak], leg, cx, cy)
+    s.stamp(LANTERN, leg, lx, ly)
+    return s
+
+def hero2_anchors():
+    """per frame, in art px from the frame's top-left, facing right: where the scarf tail and the hood tip leave the
+    body, and the lantern's centre (for its glow)"""
+    out = {}
+    for name, ((hx, hy), _, cloak, (cx, cy), _legs, _swap, (lx, ly)) in FRAMES2.items():
+        lead = 1 if CLOAK2[cloak][0].startswith('.') else 0
+        out[name] = {'neck': [cx + lead + 1, cy + 1.5], 'hood': [hx + 2.5, hy + 2.5], 'lamp': [lx + 1.5, ly + 3.5]}
+    return out
+
+def hero2_entries():
+    return [(f"hero2_{n}{'_spent' if spent else ''}", hero2(n, spent)) for spent in (False, True) for n in FRAMES2]
+
+def write_hero_anim(path):
+    import json
+    c = lambda n: int(pal[n].lstrip('#')[:6], 16) if isinstance(pal[n], str) else (pal[n][0] << 16 | pal[n][1] << 8 | pal[n][2])
+    data = {'anchors': hero2_anchors(),
+            'scarf': {'base': c('scarf1'), 'light': c('scarf2'), 'dark': c('scarf0'), 'outline': c('ink')},
+            'scarfSpent': {'base': c('spent1'), 'light': c('spent2'), 'dark': c('spent0'), 'outline': c('ink')},
+            'hood': {'base': c('cloth1'), 'light': c('cloth1'), 'dark': c('cloth0'), 'outline': c('ink')}}
+    with open(path, 'w') as f:
+        f.write('// written by tools/sprites.py: anchor points (art px, facing right) and colours for the hero\'s scarf\n'
+                '// tail and hood tip, which the game draws as chains (secondary motion)\n'
+                f'window.HERO_ANIM = {json.dumps(data, separators=(",", ":"))};\n')
+
+
 # ---------------------------------------------------------------- objects that matter to play (16 art px per tile)
 def spikes():
     """two rose spikes per tile on a dark base; only the danger ramp (plus ink)."""
@@ -286,7 +401,7 @@ def stub():                                          # a short broken column stu
 
 
 def build():
-    e = hero_entries()
+    e = hero_entries() + hero2_entries()
     e += [('spikes', spikes()), ('crumble0', crumble(0)), ('crumble1', crumble(1)),
           ('spring_pad', spring_pad()), ('spring_coil', spring_coil()), ('orb', orb()), ('orb_ghost', orb(True)),
           ('door', door()), ('bonus_door', bonus_door(True)), ('bonus_door_back', bonus_door(False)), ('flag', flag()),
@@ -314,4 +429,5 @@ if __name__ == '__main__':
                 if p[3]: rows[y0 + yy][x + xx] = p
         x += s.w * k + pad
     write_png(os.path.join(out, '..', 'tools', 'preview_4x.png'), W, H, rows)
+    write_hero_anim(os.path.join(out, 'hero-anim.js'))
     print(len(entries), 'sprites')

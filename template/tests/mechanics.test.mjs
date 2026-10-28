@@ -418,12 +418,147 @@ test('death counter, timer and end screen', async () => {
   assert.equal((await page.evaluate(() => __test.stats())).time, st.time);
 });
 
-test('the first section has the original 12 rooms and ends at a flag', async () => {
-  const rooms = await page.evaluate(() => SECTIONS.find(s => s.number === 1).rooms.map(r => ({ id: r.name, grid: r.grid })));
-  assert.equal(rooms.length, 12);
-  assert.equal(rooms[0].id, 'Run');
-  assert.equal(rooms[11].id, 'Spring test');
-  assert.ok(rooms[11].grid.join('').includes('G'));
+test('chapter shape: rest spots, calm rooms after hard runs, side rooms with stars, a chase finale', async () => {
+  const rooms = await page.evaluate(() => ROOMS.map(r => ({ id: r.name, section: r.section, kind: r.kind, beat: r.beat,
+                                                             grid: r.grid.join(''), chase: r.chase || null })));
+  const sections = [...new Set(rooms.map(r => r.section))];
+  for (const n of sections) {
+    const own = rooms.filter(r => r.section === n);
+    assert.equal(own[0].kind, 'rest', `section ${n} opens with a rest spot`);
+    assert.doesNotMatch(own[0].grid, /[\^C]/, `section ${n}'s rest spot has no hazards`);
+    const main = own.filter(r => r.kind !== 'optional');
+    assert.ok(main.at(-1).grid.includes('G'), `section ${n} ends at a flag`);
+    assert.ok(['rest'].includes(main.at(-1).beat), `section ${n} ends with a calm room`);
+  }
+  // No more than 3 hard rooms in a row on the main path
+  let run = 0;
+  for (const r of rooms.filter(r => r.kind !== 'optional')) {
+    const hard = r.kind === 'chase' || ['develop', 'twist', 'test'].includes(r.beat);
+    run = hard ? run + 1 : 0;
+    assert.ok(run <= 3, `4 hard rooms in a row, ending at ${r.id}`);
+  }
+  // Every side room holds exactly one star; the finale is 3 chase rooms with a schedule, then a calm room
+  for (const r of rooms.filter(r => r.kind === 'optional')) assert.equal(r.grid.split('*').length, 2, r.id);
+  const last = rooms.filter(r => r.section === sections.at(-1) && r.kind !== 'optional');
+  assert.deepEqual(last.map(r => r.kind), ['rest', 'chase', 'chase', 'chase', 'main']);
+  assert.ok(last.slice(1, 4).every(r => r.chase.speed > 0));
+  // Bad structure is refused when the game starts
+  const problems = await page.evaluate(() => {
+    const saved = window.SECTIONS;
+    const row = '.'.repeat(25), floor = '#'.repeat(25);
+    const grid = (...rows) => [...Array(15 - rows.length).fill(row), ...rows];
+    window.SECTIONS = [{ number: 1, name: 'x', rooms: [
+      { name: 'a', area: 1, beat: 'introduce', grid: grid('.P.......^.............D.', floor) },
+      { name: 'b', area: 1, kind: 'chase', beat: 'test', grid: grid('.P.....................G.', floor) },
+    ] }];
+    try { loadSections(); return 'accepted'; } catch (e) { return e.message; } finally {
+      window.SECTIONS = saved;
+      document.querySelector('pre')?.remove();
+    }
+  });
+  assert.match(problems, /opens with a rest spot/);
+  assert.match(problems, /needs chase: \{ from, delay, speed \}/);
+});
+
+// ---------------------------------------------------------------- stars, the map, the chase
+
+test('star: picked up, dropped on a death, counted only when leaving through the exit', async () => {
+  const name = 'Crumbling spire';
+  const i = await roomIndex(name);
+  const at = await page.evaluate(i => { const g = ROOMS[i].grid; const r = g.findIndex(row => row.includes('*'));
+                                        return [g[r].indexOf('*'), r]; }, i);
+  const door = await page.evaluate(i => { const g = ROOMS[i].grid; const r = g.findIndex(row => row.includes('D'));
+                                          return [g[r].indexOf('D'), r]; }, i);
+  const stats = () => page.evaluate(() => __test.stats());
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => __game.scene.scenes[0].startChapter());
+  await gotoRoom(name);
+  assert.equal((await stats()).starHud, '0 / 5');
+  await teleport(at[0], at[1]);
+  await frames(2);
+  assert.ok((await stats()).holding, 'picked up');
+  assert.deepEqual((await stats()).stars, [], 'not counted yet');
+  // A death drops it: the room restarts with the star back in place
+  await page.evaluate(() => __game.scene.scenes[0].die());
+  await seconds(0.5);
+  assert.equal((await stats()).holding, false);
+  await teleport(at[0], at[1]);
+  await frames(2);
+  await teleport(door[0], door[1]);
+  await frames(3);
+  const st = await stats();
+  assert.deepEqual(st.stars, [`${name}@${at[0]},${at[1]}`]);
+  assert.equal(st.starHud, '1 / 5');
+  // Back in the room, the banked star is only an outline that can't be taken again (the game's own loader: the
+  // measurer's goto gives the star back for a fresh attempt)
+  await page.evaluate(i => __test.goto(i), i);
+  await frames(2);
+  await teleport(at[0], at[1]);
+  await frames(2);
+  assert.equal((await stats()).holding, false);
+  // Leaving by the bonus door back (not the exit) doesn't count a held star
+  await gotoRoom('Orb ladder');
+  const j = await roomIndex('Orb ladder');
+  const at2 = await page.evaluate(i => { const g = ROOMS[i].grid; const r = g.findIndex(row => row.includes('*'));
+                                         return [g[r].indexOf('*'), r]; }, j);
+  await teleport(at2[0], at2[1]);
+  await frames(2);
+  assert.ok((await stats()).holding);
+  await teleport(0, 11);  // its bonus door back
+  await frames(3);
+  assert.equal((await stats()).stars.length, 1);
+});
+
+test('map: shown in a rest spot with the right section and counts, gone once the player moves', async () => {
+  const stats = () => page.evaluate(() => __test.stats());
+  await gotoRoom('Lantern rest');  // section 3
+  let st = await stats();
+  assert.equal(st.map, 1, 'the map is up as the rest spot loads');
+  assert.deepEqual(st.mapInfo.map(s => s.state), ['done', 'done', 'here', 'later', 'later']);
+  assert.ok(st.mapInfo.at(-1).finale, 'the storm is marked at the end');
+  assert.deepEqual(st.mapInfo.map(s => s.total), [1, 1, 1, 2, 0]);
+  assert.equal(st.mapInfo[1].found, 1, 'the star found in section 2 (earlier test)');
+  assert.match(st.room, /Section 3 · Refill orbs/);
+  // It never blocks input: moving works at once and fades the map
+  await page.keyboard.down('ArrowRight');
+  await seconds(0.6);
+  await page.keyboard.up('ArrowRight');
+  st = await stats();
+  assert.equal(st.map, 0);
+  assert.ok((await state()).p.x > 100, 'the player moved while the map was up');
+  // Left alone, it fades by itself after a few seconds
+  await gotoRoom('Camp');
+  await seconds(2);
+  assert.ok((await stats()).map > 0);
+  await seconds(2);
+  assert.equal((await stats()).map, 0);
+  // A main room shows no map
+  await gotoRoom('Cracked floor');
+  assert.equal((await stats()).map, 0);
+});
+
+test('chase: the storm waits, then moves on a fixed schedule; touching it restarts the segment', async () => {
+  await gotoRoom('Storm 1');
+  const c = await page.evaluate(() => ROOMS.find(r => r.name === 'Storm 1').chase);
+  const chase = () => page.evaluate(() => __test.chase());
+  assert.equal((await chase()).front, c.from, 'still during the warning');
+  await seconds(c.delay - 0.2);
+  assert.equal((await chase()).front, c.from);
+  await seconds(0.4);
+  const t = await page.evaluate(() => __game.scene.scenes[0].roomTime);
+  assert.ok(Math.abs((await chase()).front - (c.from + c.speed * (t - c.delay))) < 1e-6, 'front = from + speed × (t − delay)');
+  // Standing still, the storm catches the player: a death, and the segment restarts with the storm back at its start
+  const deaths = (await state()).s.deaths;
+  await until((st, d) => st.s.deaths > d, 4, 'the storm catching the player', deaths);
+  await seconds(0.5);
+  assert.equal((await chase()).front, c.from);
+  assert.equal((await state()).s.room, await roomIndex('Storm 1'));
+  // The measurer's hook reports how far ahead the player is and the storm's speed
+  const hs = await page.evaluate(() => __levels.state());
+  assert.ok(hs.ahead > 0 && hs.hazardSpeed === 0);
+  // Other rooms have no storm
+  await gotoRoom('Sunrise');
+  assert.equal(await chase(), null);
 });
 
 // ---------------------------------------------------------------- bonus doors and wide rooms
@@ -472,30 +607,31 @@ test('bonus door: a side trip that the main path skips', async () => {
   await page.evaluate(i => __levels.goto(i), thinAir);
   await frames(2);
   await teleport(...await doorOf(thinAir));
-  await until((st, i) => st.s.room === i, 1, 'the room after the branch room', await roomIndex('Hold still'));
+  await until((st, i) => st.s.room === i, 1, 'the room after the branch room', await roomIndex('Quiet ledge'));
   await frames(2);
   assert.equal(await bonusCount(), before + 1);
   p = (await state()).p;
   assert.ok(p.x < 3 * 32 && p.onGround, 'at the start of the next room');
 
-  // Clearing the bonus room that branches off the chapter's last room ends the chapter
+  // The bonus room off the last room of section 4 leads on to the next section's rest spot
   await page.evaluate(i => __levels.goto(i), bonus);
   await frames(2);
   await teleport(...await doorOf(bonus));
-  await until(st => st.s.won, 1, 'the end screen');
-  assert.match((await page.evaluate(() => __test.stats())).endScreen, /Bonus rooms {2}\d \/ 2/);
+  await until((st, i) => st.s.room === i, 1, 'the storm section', await roomIndex('Watchtower'));
 
-  // The flag in the last main room ends the chapter too (the optional room after it is skipped)
-  await gotoRoom('Homeward');
+  // The flag in the chapter's last room ends it; the end screen counts the stars and shows the map
+  await gotoRoom('Sunrise');
   await page.keyboard.down('ArrowRight');
   await until(st => st.s.won, 5, 'reaching the flag');
   await page.keyboard.up('ArrowRight');
-  assert.ok((await page.evaluate(() => __test.stats())).endScreen);
+  const end = await page.evaluate(() => __test.stats());
+  assert.match(end.endScreen, /Stars {2}\d \/ 5/);
+  assert.ok(end.endMap.every(s => s.state === 'done'), 'every section lit on the end screen');
 
   // A main-path door skips the optional room after it
   await gotoRoom('Spring, crack, spring');
   await teleport(...await doorOf(room30));
-  await until((st, i) => st.s.room === i, 1, 'the next main room', await roomIndex('Hold still'));
+  await until((st, i) => st.s.room === i, 1, 'the next main room', await roomIndex('Quiet ledge'));
 });
 
 test('checkpoint: after touching it, a death restarts the room there; leaving the room forgets it', async () => {

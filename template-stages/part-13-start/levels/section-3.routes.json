@@ -1,0 +1,298 @@
+{
+ "Lantern rest": [
+  {
+   "press": "right"
+  }
+ ],
+ "First orb": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 420
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Orb bridge": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 170
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 443
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Orb steps": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 170
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 443
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 906
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1179
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Still pool": [
+  {
+   "press": "right"
+  }
+ ],
+ "Orb ladder": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 110
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": {
+    "x>=": 400
+   }
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": {
+    "x>=": 528
+   }
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": {
+    "x>=": 656
+   }
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 735
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Spring and orb": [
+  {
+   "press": "right"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": "falling",
+   "after": 0.3
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 576
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Cracked stone and orb": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 140
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.0167
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 503
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Orb test": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 140
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.25
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Glow walk": [
+  {
+   "press": "right"
+  }
+ ]
+}

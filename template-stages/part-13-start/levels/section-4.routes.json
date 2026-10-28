@@ -1,0 +1,470 @@
+{
+ "Ruined gate": [
+  {
+   "press": "right"
+  }
+ ],
+ "Trapdoor spring": [
+  {
+   "press": "right"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": "falling"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Orb to the spring": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 170
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 443
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  }
+ ],
+ "Crack, orb, crack": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 110
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.0167
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 520
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.0167
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Thin air": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 110
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 390
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 582
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 774
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 966
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "when": "land"
+  }
+ ],
+ "Quiet ledge": [
+  {
+   "press": "right"
+  }
+ ],
+ "Spring, crack, spring": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 138
+   }
+  },
+  {
+   "release": "jump",
+   "after": 0.4
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 700
+   }
+  },
+  {
+   "press": "right",
+   "when": {
+    "vy<=": -700
+   }
+  }
+ ],
+ "Hold still": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 120
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "release": "right"
+  },
+  {
+   "press": "right",
+   "when": {
+    "vy<=": -700
+   },
+   "react": true
+  },
+  {
+   "press": "jump",
+   "when": "falling"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "The way back": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 110
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.0167
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "release": "right"
+  },
+  {
+   "press": "left"
+  },
+  {
+   "press": "jump",
+   "when": "falling"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x<=": 375
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "when": "land"
+  }
+ ],
+ "The long way": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 200
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 490
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": "land"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1270
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.0167
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 1695
+   }
+  },
+  {
+   "press": "right",
+   "when": {
+    "vy<=": -700
+   },
+   "react": true
+  },
+  {
+   "press": "jump",
+   "when": "falling",
+   "after": 0.3
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 2050
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Last light": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 110
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.0167
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 520
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "after": 0.0167
+  },
+  {
+   "release": "jump",
+   "after": 0.15
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1200
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1385
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Homeward": [
+  {
+   "press": "right"
+  }
+ ]
+}

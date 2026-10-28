@@ -1,0 +1,25 @@
+---
+name: character-animation
+description: Give a 2D game's hero animation that reads well and never slows the controls, drawn in code (pixel art) - a state list with frame budgets, take-off and landing beats, secondary motion for a scarf, hair or cape, and contact sheets and slowed clips to check it. Use when the user says the character looks stiff, robotic, lifeless or "like a sticker", or asks for animation, more frames, a run cycle, anticipation, or hair, scarf or cape physics.
+---
+
+# Character animation
+
+A small hero looks alive when every state has a clear pose, the changes between states are marked, and loose parts keep moving after the body stops. In a game, the player's input always comes first: animation shows what the body is already doing and never makes it wait. These rules come from the twelve principles of animation and from how well-known platformers use them (see [references/sources.md](references/sources.md)). [references/principles.md](references/principles.md) goes through the twelve for tiny sprites.
+
+This skill's scripts are in `${CLAUDE_SKILL_DIR}/scripts/` (the references write `<skill>` for this folder). The pixel-art, game-juice and platformer-levels skills sit next to it, at `${CLAUDE_SKILL_DIR}/../`, if the game used them.
+
+## Always do
+
+1. **List states and transitions first.** Before drawing anything, write down every state the hero can be in (idle, run, turn, rise, apex, fall, land, air jump, bounce, death, respawn, idle variations) and the event in the code that starts each one. Note what the game already shows for each (a frame, a squash, particles). Read this from the code, don't guess. See [references/states.md](references/states.md).
+2. **Never delay the controls.** The body moves on the frame the input arrives, as before. Add no wind-up before a jump or attack, and no animation that holds the body or blocks the next input. Anticipation is visual only: one crouch frame (50 ms at most) on take-off while the body is already rising, and a crouch on landing (80–120 ms) that also works as the wind-up for the next jump. Any new input ends a beat at once.
+3. **Give each state a frame budget.** Start from the table in [references/timing.md](references/timing.md): idle 2–4 frames of 300–500 ms, run 4–6 frames advanced by distance travelled, one frame each for rise, apex and fall, and 1–2 landing frames. Animate at 8–12 drawn frames per second on top of the 60 fps game, timed in ms. Hold the key poses longer than the in-betweens. At 16–18 px, a few strong poses beat many weak ones.
+4. **Put loose parts on a chain, in code.** A scarf, hair, a cape, ears or a hanging lantern follow the body with `scripts/secondary-motion.js`: a short chain that trails while running, hangs below while rising, lifts while falling, flops on landing and settles. Draw it on the sprite's own pixel grid, behind the body, with the sprite's outline colour. Take that part out of the drawn frames. Anchor it per frame with a table of neck (or head) points, so it rides the body's bob. Keep a scarf or tail under half the hero's height, and limit how far it can swing (it must never stand straight up above the shoulder like a raised arm). It stays visible in every pose, spins included. Reset it, don't simulate it, while the hero pops in on respawn, so it can't flick. See [references/secondary-motion.md](references/secondary-motion.md).
+5. **One owner of scale.** If the game already squashes and stretches (game-juice), that code owns scale. A drawn crouch or stretch pose adds to the same squash, so lower the juice amount for that event until the total matches what it was. Never add a second scale tween on the sprite. The body follows the physics, so arcs come from the chain, the bob and the frame offsets, never from moving the sprite off its body.
+6. **Read at 1×.** At real size you must be able to tell each state from its outline alone. The face is one shared part in every frame (see pixel-art), and the chain never covers it. Keep the state cues the game has: a palette swap for a spent double jump recolours the chain too. With "reduce motion" set, keep the chain but drop spins and big squash.
+7. **Never change how the game plays.** Animation is drawn on top. Don't touch bodies, velocities, timers or input. Put all the numbers in one settings object with a switch (for example `?anim=0`) that gives back the old look.
+8. **Check it and report.** Add the `window.__anim` hook and film the hero with `scripts/anim-sheet.mjs`, before and after: a contact sheet with one row per step and onion skin, and a slowed MP4/GIF. Look at both. The body must move identically (`--compare`), and the game's measurement and tests must give the same results. Film every state, death, respawn, long idle and turns included, and look at the frames around each transition for pops and flicks. Report each state with its frames and timings, the chain's numbers and the before/after checks. See [references/checking.md](references/checking.md).
+
+## Not now
+
+New moves and mechanics, hitbox changes and sound. Leave skeletal rigs, shaders and redrawing the whole hero until the user asks.

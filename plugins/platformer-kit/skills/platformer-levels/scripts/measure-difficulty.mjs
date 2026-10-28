@@ -36,6 +36,10 @@
 //                       (no timing error; add --sigma S to use the first measured attempt at that error)
 //     --tune            first move each trigger (x/y positions, "after" times) to the value the new player passes
 //                       most often, write routes.tuned.json to --out and measure with it (slower)
+//   A chase (a hazard that moves on a fixed schedule): state() also returns ahead (px from the player to the
+//   hazard's front, positive while safe) and hazardSpeed (px/s, 0 while it waits). Every mode then reports the
+//   margin: the fewest seconds the route stays ahead of the hazard. Rooms with kind 'rest' must pass for every
+//   player; kind 'chase' gets a 60-90% target and margin checks; kind 'optional' is the same as beat 'optional'.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -45,7 +49,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 const FPS = 60;
-const USAGE = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(6, 39).map(l => l.replace(/^\/\/ ?/, '')).join('\n');
+const USAGE = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(6, 42).map(l => l.replace(/^\/\/ ?/, '')).join('\n');
 
 // ---------------------------------------------------------------- arguments
 function parseArgs(argv) {
@@ -293,6 +297,14 @@ function pageRunner() {
     const n = route.length;
     const anchorT = new Array(n).fill(null), condT = new Array(n).fill(null), fired = new Array(n).fill(null);
     let a = 0, f = 0, outcome = 'timeout', lastAir = -1e9;
+    // a chase: the fewest seconds the player stays ahead of the hazard (ahead / hazardSpeed while it moves)
+    let margin = null, marginAt = null, caught = false;
+    const watch = (s) => {
+      if (typeof s.ahead !== 'number' || !(s.hazardSpeed > 0)) return null;
+      const m = s.ahead / s.hazardSpeed;
+      if (margin === null || m < margin) { margin = m; marginAt = [Math.round(s.x), Math.round(s.y), f]; }
+      return m;
+    };
     let s = state(), px = s.x, py = s.y, vx = 0, vy = 0, stallX = null, stallY = null, failStep = -1;
     const cond = (c, k) => {
       if (c.name === 'land' || c.name === 'apex') {
@@ -351,14 +363,14 @@ function pageRunner() {
         if (trace) evs.push(['fire', k]);
         failStep = Math.max(failStep, k);
       }
-      if (trace) { trace.push([f, s.x, s.y, vx, vy, !!s.onGround, evs]); evs = []; }
+      if (trace) { trace.push([f, s.x, s.y, vx, vy, !!s.onGround, evs, watch(s)]); evs = []; } else watch(s);
       step();
       s = state();
       vx = typeof s.vx === 'number' ? s.vx : (s.x - px) * 60;
       vy = typeof s.vy === 'number' ? s.vy : (s.y - py) * 60;
       px = s.x; py = s.y;
       if (through ? through(s) : s.done) { outcome = 'pass'; settleAfter = 2; break; }
-      if (s.dead) { outcome = 'died'; settleAfter = 60; break; }
+      if (s.dead) { outcome = 'died'; caught = typeof s.ahead === 'number' && s.ahead <= 1; settleAfter = 60; break; }
       // every key event done and no movement for 0.75 s: stuck (e.g. fell short at the foot of a wall)
       if (f % 45 === 0) {
         if (fired.every(v => v !== null) && stallX !== null && Math.abs(s.x - stallX) < 2 && Math.abs(s.y - stallY) < 2) { outcome = 'stuck'; break; }
@@ -367,7 +379,9 @@ function pageRunner() {
     }
     if (outcome === 'timeout' || outcome === 'stuck') settleAfter = 2;
     releaseAll();
-    return { outcome, frames: f, x: Math.round(s.x), y: Math.round(s.y), step: failStep, fired: fired.filter(v => v !== null).length, waiting: fired.indexOf(null) };
+    if (outcome !== 'died') watch(s);
+    return { outcome, frames: f, x: Math.round(s.x), y: Math.round(s.y), step: failStep, fired: fired.filter(v => v !== null).length, waiting: fired.indexOf(null),
+      margin: margin === null ? null : +margin.toFixed(3), marginAt, caught };
   };
   const attempt = (room, route, O, cap) => {
     const known = route.map(() => null);
@@ -424,13 +438,16 @@ function pageRunner() {
   window.__lvRun = {
     // all attempts for one room at one timing error
     measure: (room, route, sigma, runs, seed, cap, model) => {
-      const counts = { pass: 0, died: 0, stuck: 0, timeout: 0 }, failSteps = {};
+      const counts = { pass: 0, died: 0, stuck: 0, timeout: 0 }, failSteps = {}, margins = [];
+      let caught = 0;
       for (let r = 0; r < runs; r++) {
         const res = attempt(room, route, player(route, sigma, model, (seed * 1000003 + room * 7919 + r * 104729) | 0), cap);
         counts[res.outcome]++;
         if (res.outcome !== 'pass') { const key = res.step + ':' + res.outcome; failSteps[key] = (failSteps[key] || 0) + 1; }
+        if (res.outcome === 'pass' && res.margin !== null) margins.push(res.margin);
+        if (res.caught) caught++;
       }
-      return { counts, failSteps };
+      return { counts, failSteps, margins, caught };
     },
     clean: (room, route, cap) => attempt(room, route, ZERO, cap),
     // a picture of the room after `frames` frames of its clean route (0 = the start), drawn for real
@@ -463,8 +480,9 @@ function pageRunner() {
         log.push({ i, ok: r.outcome === 'pass', seconds: r.frames / 60, why: r.outcome === 'pass' ? '' : `${r.outcome} at x ${r.x}, y ${r.y}` });
         if (r.outcome !== 'pass') break;
       }
-      const missed = rooms.map((r, i) => i).filter(i => !seen.has(i) && String(rooms[i].beat || '').toLowerCase() !== 'optional');
-      return { log, finished, missed, skipped: rooms.map((r, i) => i).filter(i => !seen.has(i) && String(rooms[i].beat || '').toLowerCase() === 'optional') };
+      const opt = (r) => String(r.beat || '').toLowerCase() === 'optional' || String(r.kind || '').toLowerCase() === 'optional';
+      const missed = rooms.map((r, i) => i).filter(i => !seen.has(i) && !opt(rooms[i]));
+      return { log, finished, missed, skipped: rooms.map((r, i) => i).filter(i => !seen.has(i) && opt(rooms[i])) };
     },
     // one play with every frame logged; with a timing error it uses the first measured attempt's random draws
     trace: (room, route, sigma, seed, cap, model) => {
@@ -472,18 +490,25 @@ function pageRunner() {
       tracing = true;
       try { const res = attempt(room, route, O, cap); return { res, off: O.used || route.map(() => 0), late: route.map((_, k) => O.late ? O.late(k) : 0), rows: trace }; } finally { tracing = false; }
     },
-    rooms: () => (typeof L.rooms === 'function' ? L.rooms() : L.rooms).map(r => ({ id: String(r.id), area: r.area ?? null, beat: r.beat ?? null })),
+    rooms: () => (typeof L.rooms === 'function' ? L.rooms() : L.rooms).map(r => ({ id: String(r.id), area: r.area ?? null, beat: r.beat ?? null, kind: r.kind ?? null })),
   };
   return true;
 }
 
 // ---------------------------------------------------------------- targets (references/progression.md)
 const BEATS = { introduce: [0.9, 1], develop: [0.6, 0.9], twist: [0.6, 0.9], test: [0.4, 0.7], rest: [0.9, 1] };
+// kind (references/structure.md): main (default), rest (a rest spot: no hazards, every player passes), optional
+// (off the main path, same as beat 'optional'), chase (a segment of a chase: references/finale.md)
+const kindOf = (r) => String(r.kind || '').toLowerCase();
+const isOptional = (r) => String(r.beat || '').toLowerCase() === 'optional' || kindOf(r) === 'optional';
+const CHASE_BAND = [0.6, 0.9], MARGIN_MIN = 0.6, MARGIN_MAX = 2.5;   // seconds ahead of the hazard on the clean route
 function targetFor(room, firstArea) {
   let beat = (room.beat || '').toLowerCase();
   beat = { intro: 'introduce', conclude: 'test' }[beat] || beat;
-  if (beat === 'optional') return null;
+  if (isOptional(room)) return null;
+  if (kindOf(room) === 'rest') return [1, 1];
   if (room.area !== null && room.area === firstArea) return [0.9, 1];
+  if (kindOf(room) === 'chase') return CHASE_BAND;
   return BEATS[beat] || null;
 }
 
@@ -557,13 +582,17 @@ async function openPage(browser, url, errors) {
 
 // ---------------------------------------------------------------- output
 const pct = (v) => v === null || v === undefined ? '  -' : String(Math.round(v * 100)).padStart(3) + '%';
-const band = (t) => t ? `${Math.round(t[0] * 100)}-${Math.round(t[1] * 100)}%` : '-';
+const band = (t) => t ? (t[0] >= 1 ? 'all 100%' : `${Math.round(t[0] * 100)}-${Math.round(t[1] * 100)}%`) : '-';
 const pad = (s, n) => { s = String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s.padEnd(n); };
 
 function verdictFor(r, i, list) {
   const notes = [];
   let verdict = 'no target', nearEdge = false;
-  if (r.target) {
+  if (r.target && r.target[0] >= 1) {
+    // a rest spot: safe for everyone, so every player passes every time
+    verdict = r.reached >= 1 && r.pass.every(p => p >= 1) ? 'OK' : 'too hard';
+    if (verdict !== 'OK') notes.push(`a rest spot must be safe for every player (new ${pct(r.pass[0]).trim()}, average ${pct(r.pass[1]).trim()}, skilled ${pct(r.pass[2]).trim()}): remove its hazards and pits`);
+  } else if (r.target) {
     const v = r.reached, [lo, hi] = r.target;
     verdict = v < lo ? 'too hard' : hi < 1 && v > hi ? 'too easy' : 'OK';
     const edge = Math.min(Math.abs(v - lo), hi < 1 ? Math.abs(v - hi) : 1);
@@ -571,12 +600,28 @@ function verdictFor(r, i, list) {
     const seedVerdicts = new Set(bySeed.map(x => x < lo ? 'hard' : hi < 1 && x > hi ? 'easy' : 'ok'));
     if (bySeed.length > 1 && seedVerdicts.size > 1) { nearEdge = true; notes.push(`the seeds disagree (${bySeed.map(x => Math.round(x * 100) + '%').join(' vs ')}): the room sits on its band edge`); }
     else if (edge <= 0.03 && bySeed.length < 2) { nearEdge = true; notes.push(`within 3 points of its band edge, so the verdict can flip between runs: check with --runs 200 --seeds 1,2 --rooms ${r.n}`); }
-  } else if ((r.beat || '').toLowerCase() !== 'optional') notes.push('no beat: give the room a beat in the hook to get a target');
+  } else if (!isOptional(r)) notes.push('no beat: give the room a beat in the hook to get a target');
   const skilled = r.pass[2];
-  if ((r.beat || '').toLowerCase() !== 'optional' && skilled < 0.95) notes.push(`skilled player only ${Math.round(skilled * 100)}% (should be 95%+)`);
+  if (!isOptional(r) && skilled < 0.95) notes.push(`skilled player only ${Math.round(skilled * 100)}% (should be 95%+)`);
+  if (kindOf(r) === 'chase' && (r.margin === null || r.margin === undefined)) notes.push('a chase room, but state() reports no hazard: also return ahead and hazardSpeed (references/measuring.md)');
+  if (r.margin !== null && r.margin !== undefined) {
+    if (!isOptional(r) && r.margin < MARGIN_MIN) notes.push(`the clean route stays only ${r.margin.toFixed(2)} s ahead of the hazard (main path: ${MARGIN_MIN} s or more; see finale.md)`);
+    if (r.margin > MARGIN_MAX) notes.push(`the hazard never gets close (${r.margin.toFixed(2)} s ahead at the closest): it adds no pressure`);
+    const fails = Object.values(r.failSteps || {}).reduce((t, n) => t + n, 0);
+    if (fails && r.caught) notes.push(`${r.caught} of ${fails} failures of the player who has reached it were caught by the hazard`);
+  }
   const prev = list[i - 1];
-  if (prev && (prev.beat || '').toLowerCase() === 'test' && prev.n === r.n - 1 && r.reached <= prev.reached) notes.push('not easier than the test room before it');
+  // (chase segments tighten one after another; the release after the last one is the easier room)
+  if (prev && (prev.beat || '').toLowerCase() === 'test' && prev.n === r.n - 1 && r.reached <= prev.reached && !(kindOf(r) === 'chase' && kindOf(prev) === 'chase')) notes.push('not easier than the test room before it');
   return { verdict, nearEdge, notes };
+}
+
+// the beat column: the beat, or the room's kind when it isn't a main room (rest spot, chase, optional)
+function beatLabel(r) {
+  const k = kindOf(r);
+  if (k === 'rest') return 'rest spot';
+  if (k === 'chase' || k === 'optional') return r.beat && r.beat !== k ? `${k}:${r.beat}` : k;
+  return r.beat || '-';
 }
 
 function failText(r) {
@@ -598,10 +643,14 @@ function textTable(res) {
   const K = res.reached;
   lines.push(`"reached" = the player who has reached the room: better with every room played, timing error ±${K.start} s in room 1, levelling out near ±${K.end} s (σ = ${K.end} + ${+(K.start - K.end).toFixed(4)} × exp(−rooms played / ${K.rooms}); optional rooms not counted).`);
   lines.push('');
-  lines.push(`${' #'.padStart(3)}  ${pad('room', 24)} ${pad('area', 5)}${pad('beat', 10)}  new  avg  skl   reached (±s)  ${multi ? pad('by seed', 12) : ''}  target   verdict`);
+  const chase = res.rooms.some(r => r.margin !== null && r.margin !== undefined);
+  lines.push(`${' #'.padStart(3)}  ${pad('room', 24)} ${pad('area', 5)}${pad('beat', 10)}  new  avg  skl   reached (±s)  ${multi ? pad('by seed', 12) : ''}${chase ? 'margin  ' : ''}  target   verdict`);
   for (const r of res.rooms) {
-    lines.push(`${String(r.n).padStart(3)}  ${pad(r.id, 24)} ${pad(r.area ?? '-', 5)}${pad(r.beat || '-', 10)} ${pct(r.pass[0])} ${pct(r.pass[1])} ${pct(r.pass[2])}  ${pct(r.reached)} (${r.reachedSigma.toFixed(3)})${multi ? '  ' + pad(r.reachedBySeed.map(x => pct(x).trim()).join(' '), 12) : ''}  ${pad(band(r.target), 8)} ${r.verdict}${r.nearEdge ? ' (near edge)' : ''}`);
+    const mg = chase ? (r.margin === null || r.margin === undefined ? '     -  ' : `${r.margin.toFixed(2).padStart(5)} s `) : '';
+    lines.push(`${String(r.n).padStart(3)}  ${pad(r.id, 24)} ${pad(r.area ?? '-', 5)}${pad(beatLabel(r), 10)} ${pct(r.pass[0])} ${pct(r.pass[1])} ${pct(r.pass[2])}  ${pct(r.reached)} (${r.reachedSigma.toFixed(3)})${multi ? '  ' + pad(r.reachedBySeed.map(x => pct(x).trim()).join(' '), 12) : ''}${mg}  ${pad(band(r.target), 8)} ${r.verdict}${r.nearEdge ? ' (near edge)' : ''}`);
   }
+  if (chase) lines.push(`\nmargin: the fewest seconds the clean route stays ahead of the hazard. Median for passing attempts (new / average / skilled): ` +
+    res.rooms.filter(r => r.margin !== null && r.margin !== undefined).map(r => `${r.n} ${r.marginByPlayer.map(m => m === null ? '-' : m.toFixed(2)).join(' / ')} s`).join(', ') + '.');
   const notes = res.rooms.flatMap(r => {
     const out = r.notes.map(t => `  ${r.n} ${r.id}: ${t}`);
     const f = failText(r);
@@ -619,7 +668,7 @@ function textTable(res) {
 function reportHtml(res) {
   const data = JSON.stringify({
     game: res.game, measured: res.measured, runs: res.runs, sigmas: res.sigmas, seconds: res.seconds,
-    seeds: res.seeds, model: res.model.name, rooms: res.rooms.map(r => ({ n: r.n, id: r.id, bySeed: r.reachedBySeed, area: r.area, beat: r.beat, pass: r.pass, reached: r.reached, rs: r.reachedSigma,
+    seeds: res.seeds, model: res.model.name, rooms: res.rooms.map(r => ({ n: r.n, id: r.id, bySeed: r.reachedBySeed, area: r.area, beat: beatLabel(r) === '-' ? r.beat : beatLabel(r), margin: r.margin ?? null, pass: r.pass, reached: r.reached, rs: r.reachedSigma,
       target: r.target, verdict: r.verdict, near: r.nearEdge, notes: r.notes, fail: failText(r), clean: r.cleanPass, outcomes: r.outcomes })),
   }).replace(/</g, '\\u003c');
   return `<!doctype html>
@@ -740,8 +789,9 @@ function tipAt(e) {
   if (i !== hover) { hover = i >= 0 && i < N ? i : -1; draw(); }
   if (hover < 0) { tip.style.opacity = 0; return; }
   const r = R[hover], row = (l, v) => '<div class="r"><span>' + l + '</span><b>' + pct(v) + '</b></div>';
-  tip.innerHTML = '<b>' + r.n + ' · ' + esc(r.id) + '</b>' + (r.beat ? ' · ' + esc(r.beat) : '') + '<br>target ' + (r.target ? pct(r.target[0]) + (r.target[1] < 1 ? '–' + pct(r.target[1]) : '+') : 'none') + ' · ' + esc(r.verdict) + (r.near ? ' (near edge)' : '') +
-    row('reached (±' + r.rs.toFixed(3) + ')', r.reached) + SER.map(se => row(se.label.split(' ')[0], r.pass[se.i])).join('');
+  tip.innerHTML = '<b>' + r.n + ' · ' + esc(r.id) + '</b>' + (r.beat ? ' · ' + esc(r.beat) : '') + '<br>target ' + (r.target ? (r.target[0] >= 1 ? 'all 100%' : pct(r.target[0]) + (r.target[1] < 1 ? '–' + pct(r.target[1]) : '+')) : 'none') + ' · ' + esc(r.verdict) + (r.near ? ' (near edge)' : '') +
+    row('reached (±' + r.rs.toFixed(3) + ')', r.reached) + SER.map(se => row(se.label.split(' ')[0], r.pass[se.i])).join('') +
+    (r.margin !== null ? '<div class="r"><span>margin</span><b>' + r.margin.toFixed(2) + ' s</b></div>' : '');
   tip.style.opacity = 1;
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   let x = e.clientX - b.left + 14; if (x + tw > b.width - 4) x = e.clientX - b.left - tw - 14;
@@ -750,10 +800,10 @@ function tipAt(e) {
 $('chart').addEventListener('pointermove', tipAt);
 $('chart').addEventListener('pointerleave', () => { hover = -1; $('tip').style.opacity = 0; draw(); });
 const vc = (v) => v === 'OK' ? 'v-ok' : v === 'too hard' ? 'v-hard' : v === 'too easy' ? 'v-easy' : 'v-none';
-$('table').innerHTML = '<thead><tr><th>#</th><th>Room</th><th>Area</th><th>Beat</th><th class="num">New</th><th class="num">Average</th><th class="num">Skilled</th><th class="num">Reached</th><th>Target</th><th>Verdict</th></tr></thead><tbody>' +
+$('table').innerHTML = '<thead><tr><th>#</th><th>Room</th><th>Area</th><th>Beat</th><th class="num">New</th><th class="num">Average</th><th class="num">Skilled</th><th class="num">Reached</th>' + (R.some(r => r.margin !== null) ? '<th class="num">Margin</th>' : '') + '<th>Target</th><th>Verdict</th></tr></thead><tbody>' +
   R.map(r => '<tr><td class="n">' + r.n + '</td><td class="room">' + esc(r.id) + ([r.fail && r.verdict !== 'OK' ? r.fail : '', ...r.notes, r.clean ? '' : 'route fails with no timing error'].filter(Boolean).map(t => '<div class="note">' + esc(t) + '</div>').join('')) +
     '</td><td>' + esc(r.area ?? '–') + '</td><td>' + esc(r.beat || '–') + '</td>' + r.pass.map(v => '<td class="num">' + pct(v) + '</td>').join('') +
-    '<td class="num reach">' + pct(r.reached) + ' <span class="note">±' + r.rs.toFixed(3) + '</span>' + (D.seeds.length > 1 ? '<div class="note">seeds ' + r.bySeed.map(pct).join(' · ') + '</div>' : '') + '</td><td>' + (r.target ? pct(r.target[0]) + (r.target[1] < 1 ? '–' + pct(r.target[1]) : '+') : '–') + '</td><td class="' + vc(r.verdict) + '">' + esc(r.verdict) + (r.near ? ' <span class="note">(near edge)</span>' : '') + '</td></tr>').join('') + '</tbody>';
+    '<td class="num reach">' + pct(r.reached) + ' <span class="note">±' + r.rs.toFixed(3) + '</span>' + (D.seeds.length > 1 ? '<div class="note">seeds ' + r.bySeed.map(pct).join(' · ') + '</div>' : '') + '</td>' + (R.some(q => q.margin !== null) ? '<td class="num">' + (r.margin !== null ? r.margin.toFixed(2) + ' s' : '–') + '</td>' : '') + '<td>' + (r.target ? (r.target[0] >= 1 ? 'all 100%' : pct(r.target[0]) + (r.target[1] < 1 ? '–' + pct(r.target[1]) : '+')) : '–') + '</td><td class="' + vc(r.verdict) + '">' + esc(r.verdict) + (r.near ? ' <span class="note">(near edge)</span>' : '') + '</td></tr>').join('') + '</tbody>';
 draw();
 addEventListener('resize', draw);
 </script>
@@ -860,11 +910,11 @@ async function main() {
     const cap = Math.round(A.timeout * FPS);
     const [sNew] = A.sigmas;
     // the player who has reached room i: better with every room played, quickly at first, then levelling out.
-    // n = main-path rooms played before it; an optional room uses the n of the room it branches from.
-    const isOpt = (r) => String(r.beat || '').toLowerCase() === 'optional';
+    // n = main-path rooms played before it (rest spots teach nothing, so they don't count); an optional room uses
+    // the n of the room it branches from.
     const reachedSigma = (i) => {
-      const before = rooms.slice(0, i).filter(r => !isOpt(r)).length;
-      const n = isOpt(rooms[i]) ? Math.max(0, before - 1) : before;
+      const before = rooms.slice(0, i).filter(r => !isOptional(r) && kindOf(r) !== 'rest').length;
+      const n = isOptional(rooms[i]) ? Math.max(0, before - 1) : before;
       return +(A.skillEnd + (A.skillStart - A.skillEnd) * Math.exp(-n / A.skillRooms)).toFixed(4);
     };
     const firstArea = rooms[0].area;
@@ -926,14 +976,16 @@ async function main() {
       const t = await first.evaluate(([i, r, s, sd, c, m]) => window.__lvRun.trace(i, r, s, sd, c, m), [i, route, sg, A.seed, cap, modelFor(A, sg)]);
       console.log(`Trace: room ${i + 1} ${id}, ${sg ? `timing error ±${sg} s, ${A.model} model (seed ${A.seed}, first attempt)` : 'no timing error'}`);
       route.forEach((st, k) => console.log(`  step ${k + 1}: ${st.text}${t.late[k] ? `  (reacts ${t.late[k]} frames late)` : ''}${t.off[k] ? `  (off by ${t.off[k] > 0 ? '+' : ''}${t.off[k]} frames)` : ''}`));
-      console.log('\n  time  frame      x       y      vx      vy  ground');
+      const hz = t.rows.some(row => row[7] !== null);
+      console.log('\n  time  frame      x       y      vx      vy  ground' + (hz ? '  margin' : ''));
       const f1 = (v) => v.toFixed(1).padStart(7);
-      for (const [f, x, y, vx, vy, g, evs] of t.rows) {
+      for (const [f, x, y, vx, vy, g, evs, m] of t.rows) {
         if (f % 6 && !evs.length) continue;
         const notes = evs.map(([what, k]) => what === 'moment' ? `moment of step ${k + 1}` : `step ${k + 1} fires: ${route[k].text}`).join('; ');
-        console.log(`${(f / FPS).toFixed(2).padStart(6)} ${String(f).padStart(6)} ${f1(x)} ${f1(y)} ${f1(vx)} ${f1(vy)}  ${g ? 'yes' : ' no'}   ${notes}`);
+        console.log(`${(f / FPS).toFixed(2).padStart(6)} ${String(f).padStart(6)} ${f1(x)} ${f1(y)} ${f1(vx)} ${f1(vy)}  ${g ? 'yes' : ' no'}${hz ? (m === null ? '       -' : (m.toFixed(2) + ' s').padStart(8)) : ''}   ${notes}`);
       }
       const r = t.res;
+      if (r.margin !== null) console.log(`\nMargin: ${r.margin.toFixed(2)} s ahead of the hazard at the closest (x ${r.marginAt[0]}, y ${r.marginAt[1]}, ${(r.marginAt[2] / FPS).toFixed(2)} s in)${r.caught ? '; caught by the hazard' : ''}.`);
       console.log(`\nResult: ${r.outcome === 'pass' ? 'reached the exit' : r.outcome === 'died' ? 'died' : r.outcome === 'stuck' ? 'stuck' : 'timed out'} after ${(r.frames / FPS).toFixed(2)} s at x ${r.x}, y ${r.y}` +
         (r.waiting >= 0 && r.outcome !== 'pass' ? `; step ${r.waiting + 1} (${route[r.waiting].text}) never fired` : ''));
       return;
@@ -947,7 +999,7 @@ async function main() {
           const i = todo[next++], route = routes.rooms[rooms[i].id];
           const a = await page.evaluate(([i, r, c]) => window.__lvRun.clean(i, r, c), [i, route, cap]);
           const b = await page.evaluate(([i, r, c]) => window.__lvRun.clean(i, r, c), [i, route, cap]);
-          out.push({ i, a, same: a.outcome === b.outcome && a.frames === b.frames && a.x === b.x && a.y === b.y });
+          out.push({ i, a, same: a.outcome === b.outcome && a.frames === b.frames && a.x === b.x && a.y === b.y && a.margin === b.margin });
         }
       }));
       out.sort((p, q) => p.i - q.i);
@@ -961,10 +1013,12 @@ async function main() {
         const where = ok ? `${(a.frames / FPS).toFixed(2)} s` :
           `${a.outcome === 'died' ? 'died' : a.outcome === 'stuck' ? 'stuck' : 'timed out'} at x ${a.x}, y ${a.y} after ${(a.frames / FPS).toFixed(2)} s; last step fired: ${a.step + 1} (${route[a.step] ? route[a.step].text : '-'})` +
           (a.waiting >= 0 && a.outcome !== 'died' ? `; still waiting for step ${a.waiting + 1} (${route[a.waiting].text})` : '');
-        console.log(`${String(i + 1).padStart(3)}  ${pad(rooms[i].id, 24)} ${ok ? 'pass' : 'FAIL'}  ${where}${same ? '' : '  (NOT REPEATABLE: two identical runs ended differently)'}`);
+        const mg = a.margin === null ? '' : `; margin ${a.margin.toFixed(2)} s (closest at x ${a.marginAt[0]}, y ${a.marginAt[1]}, ${(a.marginAt[2] / FPS).toFixed(2)} s in)${a.caught ? '; caught by the hazard' : ''}`;
+        console.log(`${String(i + 1).padStart(3)}  ${pad(rooms[i].id, 24)} ${ok ? 'pass' : 'FAIL'}  ${where}${mg}${same ? '' : '  (NOT REPEATABLE: two identical runs ended differently)'}`);
+        if (kindOf(rooms[i]) === 'chase' && a.margin === null) console.log(`     a chase room, but state() reports no hazard: also return ahead and hazardSpeed`);
       }
       console.log(`\n${out.length - bad} of ${out.length} routes pass.`);
-      if (nondet) console.log(`${nondet} room(s) did not play the same twice: goto(i) must restart the room exactly (position, speed, double jump, pending timers), or the numbers are noise.`);
+      if (nondet) console.log(`${nondet} room(s) did not play the same twice: goto(i) must restart the room exactly (position, speed, double jump, pending timers, and a moving hazard), or the numbers are noise.`);
       if (errors.size) console.log('\nPage errors:\n  ' + [...errors].join('\n  '));
       process.exitCode = bad || nondet ? 1 : 0;
       return;
@@ -1005,11 +1059,13 @@ async function main() {
         const per = {};
         const seeds = A.seeds || [A.seed];
         for (const s of sig) {
-          per[s] = { counts: { pass: 0, died: 0, stuck: 0, timeout: 0 }, failSteps: {}, bySeed: [] };
+          per[s] = { counts: { pass: 0, died: 0, stuck: 0, timeout: 0 }, failSteps: {}, bySeed: [], margins: [], caught: 0 };
           for (const seed of seeds) {
             const m = await page.evaluate(([i, r, s, n, seed, c, m]) => window.__lvRun.measure(i, r, s, n, seed, c, m), [i, route, s, A.runs, seed, cap, modelFor(A, s)]);
             for (const k in m.counts) per[s].counts[k] += m.counts[k];
             for (const k in m.failSteps) per[s].failSteps[k] = (per[s].failSteps[k] || 0) + m.failSteps[k];
+            per[s].margins.push(...m.margins);
+            per[s].caught += m.caught;
             per[s].bySeed.push(+(m.counts.pass / A.runs).toFixed(3));
           }
         }
@@ -1017,6 +1073,12 @@ async function main() {
         const r = { n: i + 1, index: i, id: room.id, area: room.area, beat: room.beat, steps: route.map(s => s.text), cleanPass: clean.outcome === 'pass',
           cleanSeconds: +(clean.frames / FPS).toFixed(2), pass: A.sigmas.map(rate), reachedSigma: rs, reached: rate(rs), reachedBySeed: per[rs].bySeed,
           outcomes: Object.fromEntries(sig.map(s => [s, per[s].counts])), failSteps: per[rs].failSteps, target: targetFor(room, firstArea) };
+        if (room.kind) r.kind = room.kind;
+        if (clean.margin !== null) {
+          // a chase: the clean route's margin, and the median margin of each player's passing attempts
+          const median = (a) => { if (!a.length) return null; const b = [...a].sort((p, q) => p - q), h = b.length >> 1; return +(b.length % 2 ? b[h] : (b[h - 1] + b[h]) / 2).toFixed(3); };
+          Object.assign(r, { margin: clean.margin, marginAt: clean.marginAt, marginByPlayer: A.sigmas.map(s => median(per[s].margins)), marginReached: median(per[rs].margins), caught: per[rs].caught });
+        }
         results.push(r);
         done++;
         console.error(`[${done}/${todo.length}] ${i + 1} ${room.id}: ${clean.outcome === 'pass' ? '' : 'ROUTE FAILS WITH NO ERROR; '}new ${pct(r.pass[0]).trim()}, avg ${pct(r.pass[1]).trim()}, skilled ${pct(r.pass[2]).trim()}, reached ${pct(r.reached).trim()} (${((Date.now() - t0) / 1000).toFixed(0)} s)`);

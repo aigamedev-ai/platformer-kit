@@ -14,7 +14,10 @@ The game as it was at the start of each part of the [make-a-platformer series](h
 | `part-09-start` | The chapter with juice (part 8) |
 | `part-10-start` | The refined chapter (part 9) |
 | `part-11-start` | The chapter with sound (part 10) |
+| `part-12-start` | The chapter with pixel art (part 11): 34 main rooms and 2 side rooms |
+| `part-13-start` | The chapter as a journey (part 12): 53 rooms in five sections, with rest spots, side rooms with stars and the storm chase |
+| `part-14-start` | The chapter with Wick's animation (part 13) |
 
-These are the recorded sessions' starting files, unchanged, without `node_modules`, reports or our own notes. They load Phaser 3.80.1 from jsDelivr as the originals did. The finished game after part 11 is [../template](../template), which has Phaser in the folder.
+These are the recorded sessions' starting files, unchanged, without `node_modules`, reports or our own notes. They load Phaser 3.80.1 from jsDelivr as the originals did. The finished game after part 14 is [../template](../template), which has Phaser in the folder.
 
-For parts 6 to 11, run `npm install && npx playwright install chromium` in your copy before you start.
+For parts 6 to 14, run `npm install && npx playwright install chromium` in your copy before you start.

@@ -1,12 +1,32 @@
 // Section 4: everything together (area 5): crumbling blocks, refill orbs and springs, with the double jump.
-// Ends with a two-screen climax and a calm walk home. Two optional bonus rooms sit behind bonus doors (B).
+// Opens at a ruined gate (rest spot), has a calm ledge after three hard rooms, ends with a two-screen climax and a calm
+// walk home. Two optional bonus rooms with a star each sit behind bonus doors (B).
 // Tile legend and section rules: levels/README.md and the comment above loadSections() in index.html.
 (window.SECTIONS = window.SECTIONS || []).push({
   number: 4,
   name: 'All together',
   rooms: [
     // ---- Area 5: crumbling blocks, refill orbs and springs together ----
-    { // 27. Walk to the wall and wait on the cracked floor: it drops you onto a spring; double jump at the top to reach the door.
+    { // Rest spot: an old gate in the ruins. Far off, an island with a cracked block, an orb and a spring together.
+      name: 'Ruined gate', area: 5, kind: 'rest', beat: 'rest', vista: 'mix',
+      grid: [
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.P.....................D.',
+        '#########################',
+        '#########################',
+        '#########################',
+      ] },
+    { // Walk to the wall and wait on the cracked floor: it drops you onto a spring; double jump at the top to reach the door.
       name: 'Trapdoor spring', area: 5, beat: 'introduce',
       grid: [
         '.........................',
@@ -25,7 +45,7 @@
         '##############S##########',
         '#########################',
       ] },
-    { // 28. Jump and double jump over the spike pit, catch the orb, jump again onto the spring and ride it up to the door.
+    { // Jump and double jump over the spike pit, catch the orb, jump again onto the spring and ride it up to the door.
       name: 'Orb to the spring', area: 5, beat: 'develop',
       grid: [
         '.........................',
@@ -44,7 +64,7 @@
         '#####..............######',
         '#####^^^^^^^^^^^^^^######',
       ] },
-    { // 29. Leave each one-tile cracked stone at once; the orb between them carries you to the second.
+    { // Leave each one-tile cracked stone at once; the orb between them carries you to the second.
       name: 'Crack, orb, crack', area: 5, beat: 'develop',
       grid: [
         '.........................',
@@ -63,7 +83,7 @@
         '####....................#',
         '####^^^^^^^^^^^^^^^^^^^^#',
       ] },
-    { // 30. Jump onto the spring, bounce onto the high cracked ledge, run off its end and stop in the air over the second spring, which throws you up to the door. Bonus door on a step behind the start.
+    { // Jump onto the spring, bounce onto the high cracked ledge, run off its end and stop in the air over the second spring, which throws you up to the door. Bonus door on a step behind the start.
       name: 'Spring, crack, spring', area: 5, beat: 'develop',
       grid: [
         '.........................',
@@ -82,8 +102,8 @@
         '####.......#..........#.#',
         '####^^^^^^^#^^^^^^^^^^#^#',
       ] },
-    { // 31. Bonus room, behind the bonus door at the start of room 30: four orbs and nothing to stand on: jump out of each orb the moment you touch it to reach the next. Its door leads on to room 32.
-      name: 'Thin air', area: 5, beat: 'optional',
+    { // Bonus room, behind the bonus door at the start of 'Spring, crack, spring': four orbs and nothing to stand on: jump out of each orb the moment you touch it to reach the next. Its door leads on to 'Quiet ledge'.
+      name: 'Thin air', area: 5, kind: 'optional', beat: 'optional',
       grid: [
         '........................................',
         '........................................',
@@ -92,7 +112,7 @@
         '........................................',
         '........................................',
         '........................................',
-        '............O.....O.....O.....O.........',
+        '............O.....O.....O.....O...*.....',
         '........................................',
         '......................................D.',
         '....................................####',
@@ -101,7 +121,26 @@
         '####................................####',
         '####^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^####',
       ] },
-    { // 32. Land on the cracked lid and stay on it: it drops you onto the springs, which throw you high enough to double jump to the door.
+    { // Calm: a quiet ledge in the ruins, a walk with a low step down.
+      name: 'Quiet ledge', area: 5, beat: 'rest',
+      grid: [
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.P.......................',
+        '##########...........D...',
+        '#########################',
+        '#########################',
+      ] },
+    { // Land on the cracked lid and stay on it: it drops you onto the springs, which throw you high enough to double jump to the door.
       name: 'Hold still', area: 5, beat: 'twist',
       grid: [
         '.........................',
@@ -120,7 +159,7 @@
         '#####...###........######',
         '#####^^^###^^^^^^^^######',
       ] },
-    { // 33. Hop off the cracked stone down to the springs, then fly back left through the orb to the door above the start.
+    { // Hop off the cracked stone down to the springs, then fly back left through the orb to the door above the start.
       name: 'The way back', area: 5, beat: 'twist',
       grid: [
         '.........................',
@@ -139,7 +178,7 @@
         '####................SS###',
         '####^^^^^^^^^^^^^^#######',
       ] },
-    { // 34. Everything at once, over two screens: off the cracked runway into the orb and onto the spring, bounce onto a cracked stone and down to a rest (a checkpoint); then a cracked stone, the cracked lid over the springs (stay on it), and the orb up to the door.
+    { // Everything at once, over two screens: off the cracked runway into the orb and onto the spring, bounce onto a cracked stone and down to a rest (a checkpoint); then a cracked stone, the cracked lid over the springs (stay on it), and the orb up to the door.
       name: 'The long way', area: 5, beat: 'test',
       grid: [
         '.......................................................................',
@@ -158,7 +197,7 @@
         '###...................#..............####............#..............###',
         '###^^^^^^^^^^^^^^^^^^^#^^^^^^^^^^^^^^####^^^^^^^^^^^^#^^^^^^^^^^^^^^###',
       ] },
-    { // 35. A calm walk home to the flag under three orbs. Bonus door on a step behind the start.
+    { // A calm walk home to the flag under three orbs. Bonus door on a step behind the start.
       name: 'Homeward', area: 5, beat: 'rest',
       grid: [
         '.........................',
@@ -177,13 +216,13 @@
         '#########################',
         '#########################',
       ] },
-    { // 36. Bonus room, behind the bonus door at the start of room 35: cracked stone, orb, cracked stone, a one-tile spring post, orb and a high door, each at the edge of reach. Its door ends the chapter.
-      name: 'Last light', area: 5, beat: 'optional',
+    { // Bonus room, behind the bonus door at the start of 'Homeward': cracked stone, orb, cracked stone, a one-tile spring post, orb and a high door, each at the edge of reach. Its door leads on to the storm (section 5).
+      name: 'Last light', area: 5, kind: 'optional', beat: 'optional',
       grid: [
         '..................................................',
         '..................................................',
         '..................................................',
-        '..................................................',
+        '..............................................*...',
         '................O................................D',
         '......................C....................O....##',
         '................................................##',

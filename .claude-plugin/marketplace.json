@@ -9,7 +9,7 @@
     {
       "name": "platformer-kit",
       "source": "./plugins/platformer-kit",
-      "description": "Five skills from the make-a-platformer series: platformer feel, level design with a difficulty measurer, game juice, sound effects in code and pixel art"
+      "description": "Seven skills from the make-a-platformer series: platformer feel, level design with a difficulty measurer, game juice, sound effects in code, adaptive music in code, pixel art and character animation"
     }
   ]
 }

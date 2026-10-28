@@ -1,4 +1,9 @@
 {
+ "Ruined gate": [
+  {
+   "press": "right"
+  }
+ ],
  "Trapdoor spring": [
   {
    "press": "right"
@@ -160,6 +165,11 @@
   },
   {
    "when": "land"
+  }
+ ],
+ "Quiet ledge": [
+  {
+   "press": "right"
   }
  ],
  "Spring, crack, spring": [

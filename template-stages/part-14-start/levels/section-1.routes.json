@@ -1,0 +1,430 @@
+{
+ "Trailhead": [
+  {
+   "press": "right"
+  }
+ ],
+ "Jump": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 193
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 290
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Spike run": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 210
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 450
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 690
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 860
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 1250
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Double jump": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 300
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Long jump": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 205
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Goal": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 146
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 307
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Meadow": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 380
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Sky steps": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 115
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 400
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "right",
+   "after": 0.15
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 672
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "right",
+   "after": 0.15
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "right",
+   "when": {
+    "x>=": 955
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  },
+  {
+   "press": "right",
+   "after": 0.15
+  },
+  {
+   "press": "jump",
+   "after": 0.05
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Spring": [
+  {
+   "press": "right"
+  }
+ ],
+ "Spring jump": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 174
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": "apex"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Bounce and double jump": [
+  {
+   "press": "right"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": "apex",
+   "after": 0.3167
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Spring in the pit": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 184
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  }
+ ],
+ "Ridge path": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 340
+   }
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Get it back": [
+  {
+   "press": "right"
+  },
+  {
+   "press": "jump",
+   "when": {
+    "x>=": 94
+   }
+  },
+  {
+   "release": "jump",
+   "when": "apex"
+  },
+  {
+   "press": "jump"
+  },
+  {
+   "release": "jump",
+   "after": 0.6333
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "release": "right"
+  },
+  {
+   "press": "left"
+  },
+  {
+   "press": "jump",
+   "when": "apex"
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Spring test": [
+  {
+   "press": "right"
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": {
+    "vy>=": -300
+   }
+  },
+  {
+   "release": "jump",
+   "after": 0.45
+  },
+  {
+   "when": {
+    "vy<=": -700
+   }
+  },
+  {
+   "press": "jump",
+   "when": "apex",
+   "after": 0.25
+  },
+  {
+   "release": "jump",
+   "when": "land"
+  }
+ ],
+ "Overlook": [
+  {
+   "press": "right"
+  }
+ ]
+}

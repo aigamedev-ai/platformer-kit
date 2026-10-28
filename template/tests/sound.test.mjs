@@ -167,6 +167,23 @@ test('door, bonus door, section flag and the finish', async () => {
   assert.deepEqual(await played(), ['flag']);
 });
 
+test('star pickup, and the storm: a rumble as a chase segment starts, thunder when it moves', async () => {
+  await load(room('.P.*.....................', '#########################'));
+  await page.evaluate(() => { window.__played = []; });
+  await page.keyboard.down('ArrowRight');
+  await seconds(0.5);
+  await page.keyboard.up('ArrowRight');
+  assert.ok((await played()).includes('star'));
+  const i = await page.evaluate(() => ROOMS.findIndex(r => r.kind === 'chase'));
+  const delay = await page.evaluate(i => ROOMS[i].chase.delay, i);
+  await page.evaluate(() => { window.__played = []; });
+  await page.evaluate(i => __test.goto(i), i);
+  await frames(1);
+  assert.deepEqual(await played(), ['rumble']);
+  await seconds(delay + 0.1);
+  assert.deepEqual(await played(), ['thunder']);
+});
+
 test('every recipe renders a short sound that is neither silent nor clipped', async () => {
   const report = await page.evaluate(async () => {
     const rate = 44100, out = {};
@@ -200,7 +217,9 @@ test('every recipe renders a short sound that is neither silent nor clipped', as
   for (const [name, r] of Object.entries(report)) {
     assert.ok(r.peak > 0.02, `${name} is audible (peak ${r.peak})`);
     assert.ok(r.peak < 1 && r.rawPeak < 1, `${name} does not clip (peak ${r.peak}, raw ${r.rawPeak})`);
-    assert.ok(r.length > 0.01 && r.length < (name === 'finish' ? 0.9 : 0.4), `${name} is short (${r.length} s)`);
+    // The chapter's finish and the storm's rumble and thunder are meant to ring out; everything else is short
+    const longest = { finish: 0.9, rumble: 1.3, thunder: 1.0 }[name] || 0.4;
+    assert.ok(r.length > 0.01 && r.length < longest, `${name} is short (${r.length} s)`);
   }
 });
 

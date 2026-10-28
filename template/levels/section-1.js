@@ -1,12 +1,14 @@
 // Section 1: the jump, the double jump and the spring pad (areas 1 and 2).
+// Opens at a campfire (rest spot), has a calm walk after each area's test, and one side room with a star.
 // Tile legend and section rules: levels/README.md and the comment above loadSections() in index.html.
 (window.SECTIONS = window.SECTIONS || []).push({
   number: 1,
   name: 'First steps',
   rooms: [
     // ---- Area 1: the jump and the double jump ----
-    { // 1. Run right along the floor and step down off a low ledge to the door.
-      name: 'Run', area: 1, beat: 'introduce',
+    { // Rest spot: a campfire at the trailhead; run right and step down off a low ledge to the door. Far off, a spring
+      // waits on a floating island (section 1's second half).
+      name: 'Trailhead', area: 1, kind: 'rest', beat: 'rest', vista: 'spring',
       grid: [
         '.........................',
         '.........................',
@@ -24,7 +26,7 @@
         '#########################',
         '#########################',
       ] },
-    { // 2. Jump onto a low block, then across a small safe gap to a higher one.
+    { // Jump onto a low block, then across a small safe gap to a higher one.
       name: 'Jump', area: 1, beat: 'introduce',
       grid: [
         '.........................',
@@ -43,26 +45,27 @@
         '#########################',
         '#########################',
       ] },
-    { // 3. Jump two spike pits, the second one wider, with a rest between them.
-      name: 'Spike pits', area: 1, beat: 'develop',
+    { // Long run (two screens): hop a row of spike pits that grow from two tiles to four, with solid ground to land on
+      // between each, then step down to the door. The rhythm is the idea: run, hop, run, hop.
+      name: 'Spike run', area: 1, beat: 'develop',
       grid: [
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.........................',
-        '.P....................D..',
-        '#######...#####....######',
-        '#######^^^#####^^^^######',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '..................................................',
+        '.P..............................................D.',
+        '#######..#####...#####....####....######...#######',
+        '#######^^#####^^^#####^^^^####^^^^######^^^#######',
       ] },
-    { // 4. Double jump up a wall that is far too tall for one jump (falling is safe).
+    { // Double jump up a wall that is far too tall for one jump (falling is safe).
       name: 'Double jump', area: 1, beat: 'introduce',
       grid: [
         '.........................',
@@ -81,7 +84,7 @@
         '#########################',
         '#########################',
       ] },
-    { // 5. Run, jump and double jump across a wide spike pit onto a higher ledge.
+    { // Run, jump and double jump across a wide spike pit onto a higher ledge.
       name: 'Long jump', area: 1, beat: 'twist',
       grid: [
         '.........................',
@@ -100,7 +103,7 @@
         '#######........##########',
         '#######^^^^^^^^##########',
       ] },
-    { // 6. Hop over spikes onto a pillar, then double jump high up to the door (end of area 1).
+    { // Hop over spikes onto a pillar, then double jump high up to the door (end of area 1).
       name: 'Goal', area: 1, beat: 'test',
       grid: [
         '.........................',
@@ -120,8 +123,48 @@
         '######^^^###^^^^#########',
       ] },
 
+    { // Calm: a walk over a meadow with one low step. A bonus door glows on a step behind the start.
+      name: 'Meadow', area: 1, beat: 'rest',
+      grid: [
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        'B........................',
+        '#.P..........#########D..',
+        '#########################',
+        '#########################',
+        '#########################',
+      ] },
+    { // Side room behind Meadow's bonus door: three one-tile pillars over spikes, each a long jump and double jump
+      // away and a step higher; stop dead on each. The star hangs over the last pillar. Its door leads on to Spring.
+      name: 'Sky steps', area: 1, kind: 'optional', beat: 'optional',
+      grid: [
+        '........................................',
+        '........................................',
+        '........................................',
+        '........................................',
+        '........................................',
+        '........................................',
+        '........................................',
+        '..............................*.........',
+        '........................................',
+        '..............................#.......D.',
+        '.....................#........#....#####',
+        'B.P..........#.......#........#....#####',
+        '####.........#.......#........#....#####',
+        '####.........#.......#........#....#####',
+        '####^^^^^^^^^#^^^^^^^#^^^^^^^^#^^^^#####',
+      ] },
+
     // ---- Area 2: the spring pad ----
-    { // 7. Walk onto the spring and ride it up a wall far too tall for a double jump (falling is safe).
+    { // Walk onto the spring and ride it up a wall far too tall for a double jump (falling is safe).
       name: 'Spring', area: 2, beat: 'introduce',
       grid: [
         '.........................',
@@ -140,7 +183,7 @@
         '#########################',
         '#########################',
       ] },
-    { // 8. Bounce off the spring, then double jump late on the way down to stretch over a spike pit too wide for the bounce alone.
+    { // Bounce off the spring, then double jump late on the way down to stretch over a spike pit too wide for the bounce alone.
       name: 'Bounce and double jump', area: 2, beat: 'develop',
       grid: [
         '.........................',
@@ -159,7 +202,7 @@
         '######..............#####',
         '######^^^^^^^^^^^^^^#####',
       ] },
-    { // 9. Jump the spike pit onto the lone spring, then double jump at the top of the bounce to clear a wall too tall for the bounce alone.
+    { // Jump the spike pit onto the lone spring, then double jump at the top of the bounce to clear a wall too tall for the bounce alone.
       name: 'Spring jump', area: 2, beat: 'develop',
       grid: [
         '.........................',
@@ -178,7 +221,7 @@
         '#######....#..###########',
         '#######^^^^#^^###########',
       ] },
-    { // 10. Jump down onto the lone spring standing in the spikes and let it throw you across to the far ledge.
+    { // Jump down onto the lone spring standing in the spikes and let it throw you across to the far ledge.
       name: 'Spring in the pit', area: 2, beat: 'twist',
       grid: [
         '.........................',
@@ -197,7 +240,26 @@
         '#######.....#........####',
         '#######^^^^^#^^^^^^^^####',
       ] },
-    { // 11. Double jump over the pit onto the lone spring by the wall; its bounce gives the double jump back, so turn round and use it again to reach the ledge above the start.
+    { // Calm: a short ridge path with a low step up; the springs have been hard work.
+      name: 'Ridge path', area: 2, beat: 'rest',
+      grid: [
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '................D........',
+        '.P..........#############',
+        '#########################',
+        '#########################',
+      ] },
+    { // Double jump over the pit onto the lone spring by the wall; its bounce gives the double jump back, so turn round and use it again to reach the ledge above the start.
       name: 'Get it back', area: 2, beat: 'twist',
       grid: [
         '................###......',
@@ -216,7 +278,7 @@
         '####..........###########',
         '####^^^^^^^^^^###########',
       ] },
-    { // 12. Area test: bounce, double jump early to land on the raised pillar spring, then bounce and double jump again to land on the flag pillar at the far side.
+    { // Area test: bounce, double jump early to land on the raised pillar spring, then bounce and double jump again to land on the door pillar at the far side.
       name: 'Spring test', area: 2, beat: 'test',
       grid: [
         '.........................',
@@ -228,12 +290,31 @@
         '.........................',
         '.........................',
         '...........S.............',
-        '...........#...........G.',
+        '...........#...........D.',
         '...........#...........#.',
         '...........#...........#.',
         'PS.........#...........#.',
         '##.........#...........#.',
         '##^^^^^^^^^#^^^^^^^^^^^#^',
+      ] },
+    { // Calm: an overlook at the end of the section; walk down the gentle steps to the flag.
+      name: 'Overlook', area: 2, beat: 'rest',
+      grid: [
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.........................',
+        '.P.......................',
+        '######...................',
+        '###########..........G...',
+        '#########################',
+        '#########################',
       ] },
   ],
 });
